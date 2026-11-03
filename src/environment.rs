@@ -13,6 +13,7 @@ use crate::{
 
 const WATER_FOG_COLOR: Color = Color::srgb(0.03, 0.18, 0.32);
 const WATER_FOG_DISTANCE: f32 = 96.0;
+const WATER_FOG_SCALE: f32 = 0.25;
 const AIR_VOLUME: Color = Color::srgb(0.78, 0.85, 0.96);
 
 #[derive(Component)]
@@ -22,7 +23,6 @@ pub struct GlobalFogVolume;
 pub struct EnvironmentState {
     pub underwater: bool,
     pub water_surface: f32,
-    water_vision_time: f32,
 }
 
 impl Default for EnvironmentState {
@@ -30,11 +30,6 @@ impl Default for EnvironmentState {
         Self {
             underwater: false,
             water_surface: 0.0,
-            water_vision_time: if std::env::var("ELOSIUM_WATER_VISION").is_ok() {
-                600.0
-            } else {
-                0.0
-            },
         }
     }
 }
@@ -69,13 +64,6 @@ pub fn update_environment_effects(
         .is_water();
     state.underwater = underwater;
 
-    let delta = time.delta_secs();
-    if underwater {
-        state.water_vision_time = (state.water_vision_time + delta * 20.0).min(600.0);
-    } else {
-        state.water_vision_time = (state.water_vision_time - delta * 200.0).max(0.0);
-    }
-
     let depth = if underwater {
         water_depth(&world, eye)
     } else {
@@ -106,14 +94,15 @@ pub fn update_environment_effects(
 
     if let Ok((mut fog_volume, mut fog_transform)) = volume.single_mut() {
         if underwater {
+            let day = sun_daylight(&sun);
             fog_transform.translation = eye;
             fog_transform.scale = Vec3::new(420.0, 320.0, 420.0);
             fog_volume.fog_color = Color::srgb(0.10, 0.32, 0.48);
-            fog_volume.density_factor = 0.012;
+            fog_volume.density_factor = 0.014;
             fog_volume.absorption = 0.0015;
-            fog_volume.scattering = 0.35;
-            fog_volume.scattering_asymmetry = 0.58;
-            fog_volume.light_intensity = 2.2;
+            fog_volume.scattering = 0.45;
+            fog_volume.scattering_asymmetry = 0.62;
+            fog_volume.light_intensity = 2.2 + 3.0 * day;
         } else {
             let godray = settings.godray_intensity.clamp(0.2, 3.0);
             fog_transform.translation = eye;
@@ -129,8 +118,9 @@ pub fn update_environment_effects(
 
     if let Some(mut volumetric) = volumetric {
         if underwater {
+            let day = sun_daylight(&sun);
             volumetric.ambient_color = Color::linear_rgb(0.05, 0.16, 0.26);
-            volumetric.ambient_intensity = 0.7;
+            volumetric.ambient_intensity = 0.2 + 0.4 * day;
         } else {
             volumetric.ambient_color = Color::WHITE;
             volumetric.ambient_intensity = 0.0;
@@ -138,13 +128,12 @@ pub fn update_environment_effects(
     }
 
     if underwater {
-        let vision = water_vision(state.water_vision_time);
         fog.color = WATER_FOG_COLOR;
         fog.directional_light_color = WATER_FOG_COLOR;
         fog.directional_light_exponent = 6.0;
         fog.falloff = FogFalloff::Linear {
             start: 0.0,
-            end: WATER_FOG_DISTANCE * vision.max(0.25) * settings.fog_radius.max(0.1),
+            end: WATER_FOG_DISTANCE * WATER_FOG_SCALE * settings.fog_radius.max(0.1),
         };
         *clear = ClearColor(WATER_FOG_COLOR);
     } else {
@@ -184,17 +173,4 @@ fn water_depth(world: &VoxelWorld, eye: Vec3) -> f32 {
     let level = world.water_level(x, top, z).unwrap_or(0) as f32;
     let surface = top as f32 + 0.875 - level * 0.1;
     (surface - eye.y).max(0.0)
-}
-
-fn water_vision(time: f32) -> f32 {
-    if time >= 600.0 {
-        return 1.0;
-    }
-    let rise = (time / 100.0).clamp(0.0, 1.0);
-    let settle = if time < 100.0 {
-        0.0
-    } else {
-        ((time - 100.0) / 500.0).clamp(0.0, 1.0)
-    };
-    rise * 0.6 + settle * 0.399_999_98
 }
