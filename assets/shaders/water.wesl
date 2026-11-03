@@ -133,19 +133,9 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
 
     let fresnel = pow(1.0 - max(dot(surface_normal, view_dir), 0.0), 3.0);
     var color = mix(lit.rgb, reflection, 0.22 + fresnel * 0.50);
-    if (camera_underwater < 0.5 && world_normal.y > 0.5) {
-        let swell = 0.5
-            + 0.5 * sin(position.x * 1.1 + time * 0.55)
-                * sin(position.z * 0.9 - time * 0.4);
-        color = mix(
-            color,
-            params.water_color.rgb * (1.30 + 0.55 * swell),
-            0.52,
-        );
-    }
 
     let underside = select(0.0, 1.0, world_normal.y > 0.0 && view_dir.y < 0.0);
-    var alpha = mix(0.84, 0.96, fresnel);
+    var alpha = mix(0.72, 0.88, fresnel);
     if (camera_underwater > 0.5 && underside > 0.5) {
         let look_up = clamp(-view_dir.y, 0.0, 1.0);
         let daylight = clamp(params.underwater.z, 0.0, 1.0);
@@ -156,21 +146,21 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
             pow(look_up, 1.2),
         );
         let depth_below = max(params.underwater.y - params.camera_pos.y, 0.0);
-        let dim = 1.0 - 0.45 * smoothstep(4.0, 26.0, depth_below);
-        var surface = mix(window, params.water_color.rgb * 2.2, 0.72) * dim;
+        let dim = 1.0 - 0.5 * smoothstep(4.0, 26.0, depth_below);
+        var surface = mix(window, params.water_color.rgb * 2.0, 0.65) * dim;
         let wave = 0.5
             + 0.5 * sin(position.x * 1.7 + time * 0.9 + ripple.x * 6.0)
                 * sin(position.z * 1.3 - time * 0.7 + ripple.y * 5.0);
-        let wave_b = 0.5
-            + 0.5 * sin(position.x * 3.7 - time * 1.25 + ripple.x * 9.0)
-                * sin(position.z * 3.1 + time * 0.95 + ripple.y * 8.0);
-        let bands_raw = 0.56 + 0.40 * wave + 0.20 * wave_b;
-        let bands = mix(0.94, bands_raw, 1.0 - smoothstep(24.0, 80.0, camera_distance));
-        surface *= bands;
-        let glint = pow(max(dot(-view_dir, sun), 0.0), 10.0) * 0.55 * daylight;
+        let shimmer = caustic(
+            position.xz * 1.15 + vec2<f32>(time * 0.06, -time * 0.04),
+            time * 1.2,
+        );
+        surface *= 0.82 + 0.30 * wave;
+        surface += vec3<f32>(0.16, 0.38, 0.42) * shimmer * daylight * 1.35;
+        let glint = pow(max(dot(-view_dir, sun), 0.0), 12.0) * 0.35 * daylight;
         surface += params.sun_color.rgb * glint;
         let grazing = pow(1.0 - abs(dot(surface_normal, view_dir)), 3.0);
-        let veil = clamp(0.30 + 0.34 * grazing + 0.14 * (1.0 - look_up), 0.24, 0.86);
+        let veil = clamp(0.22 + 0.28 * grazing + 0.10 * (1.0 - look_up), 0.16, 0.76);
         return vec4<f32>(surface, veil);
     }
     alpha = mix(alpha, 1.0, smoothstep(24.0, 110.0, camera_distance));

@@ -764,9 +764,9 @@ pub fn build_section(
                         0.0
                     };
                     let water_filter = Vec3::new(
-                        1.0 - 0.5 * water_depth01,
-                        1.0 - 0.34 * water_depth01,
-                        1.0 - 0.16 * water_depth01,
+                        1.0 - 0.82 * water_depth01,
+                        1.0 - 0.64 * water_depth01,
+                        1.0 - 0.42 * water_depth01,
                     );
                     let mut ao = [1.0f32; 4];
                     for (i, corner) in face.corner_uv.iter().enumerate() {

@@ -1,5 +1,5 @@
 use bevy::{
-    light::{FogVolume, GlobalAmbientLight, VolumetricFog},
+    light::{FogVolume, VolumetricFog},
     prelude::*,
 };
 
@@ -11,8 +11,8 @@ use crate::{
     world::VoxelWorld,
 };
 
-const WATER_FOG_COLOR: Color = Color::srgb(0.05, 0.21, 0.30);
-const WATER_FOG_DISTANCE: f32 = 80.0;
+const WATER_FOG_COLOR: Color = Color::srgb(0.03, 0.18, 0.32);
+const WATER_FOG_DISTANCE: f32 = 96.0;
 const AIR_VOLUME: Color = Color::srgb(0.78, 0.85, 0.96);
 
 #[derive(Component)]
@@ -48,7 +48,6 @@ pub fn update_environment_effects(
     >,
     mut mirror_fog: Query<&mut DistanceFog, With<ReflectionCamera>>,
     sun: Query<&DirectionalLight, With<SunLight>>,
-    mut ambient: ResMut<GlobalAmbientLight>,
     mut volume: Query<(&mut FogVolume, &mut Transform), (With<GlobalFogVolume>, Without<Camera3d>)>,
     handles: Res<GameMaterials>,
     mut waters: ResMut<Assets<WaterMaterial>>,
@@ -92,7 +91,7 @@ pub fn update_environment_effects(
             0.0,
         );
         if underwater {
-            water.extension.params.fog_color = Vec4::new(0.04, 0.16, 0.28, 0.0);
+            water.extension.params.fog_color = Vec4::new(0.02, 0.16, 0.28, 0.0);
         }
     }
     if let Some(mut block) = blocks.get_mut(&handles.block) {
@@ -105,21 +104,16 @@ pub fn update_environment_effects(
         );
     }
 
-    if underwater {
-        ambient.brightness *= 2.2;
-        ambient.color = Color::srgb(0.52, 0.74, 1.0);
-    }
-
     if let Ok((mut fog_volume, mut fog_transform)) = volume.single_mut() {
         if underwater {
-            fog_transform.translation = Vec3::new(eye.x, state.water_surface - 60.0, eye.z);
-            fog_transform.scale = Vec3::new(200.0, 120.0, 200.0);
-            fog_volume.fog_color = Color::srgb(0.12, 0.40, 0.58);
-            fog_volume.density_factor = 0.014;
+            fog_transform.translation = eye;
+            fog_transform.scale = Vec3::new(420.0, 320.0, 420.0);
+            fog_volume.fog_color = Color::srgb(0.10, 0.32, 0.48);
+            fog_volume.density_factor = 0.012;
             fog_volume.absorption = 0.0015;
-            fog_volume.scattering = 0.5;
-            fog_volume.scattering_asymmetry = 0.55;
-            fog_volume.light_intensity = 9.0;
+            fog_volume.scattering = 0.35;
+            fog_volume.scattering_asymmetry = 0.58;
+            fog_volume.light_intensity = 2.2;
         } else {
             let godray = settings.godray_intensity.clamp(0.2, 3.0);
             fog_transform.translation = eye;
@@ -135,8 +129,8 @@ pub fn update_environment_effects(
 
     if let Some(mut volumetric) = volumetric {
         if underwater {
-            volumetric.ambient_color = Color::linear_rgb(0.04, 0.12, 0.22);
-            volumetric.ambient_intensity = 0.6;
+            volumetric.ambient_color = Color::linear_rgb(0.05, 0.16, 0.26);
+            volumetric.ambient_intensity = 0.7;
         } else {
             volumetric.ambient_color = Color::WHITE;
             volumetric.ambient_intensity = 0.0;
