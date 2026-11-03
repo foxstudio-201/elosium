@@ -11,7 +11,6 @@ use crate::{
     world::VoxelWorld,
 };
 
-const WATER_FOG_COLOR: Color = Color::srgb(0.03, 0.18, 0.32);
 const WATER_FOG_DISTANCE: f32 = 96.0;
 const WATER_FOG_SCALE: f32 = 0.25;
 const AIR_VOLUME: Color = Color::srgb(0.78, 0.85, 0.96);
@@ -71,6 +70,9 @@ pub fn update_environment_effects(
     };
     state.water_surface = if underwater { eye.y + depth } else { 0.0 };
     let underwater_flag = if underwater { 1.0 } else { 0.0 };
+    let day = sun_daylight(&sun);
+    let moon = (1.0 - day).clamp(0.0, 1.0);
+    let godray = settings.godray_intensity.clamp(0.2, 3.0);
     if let Some(mut water) = waters.get_mut(&handles.water) {
         water.extension.params.underwater = Vec4::new(
             underwater_flag,
@@ -93,34 +95,29 @@ pub fn update_environment_effects(
     }
 
     if let Ok((mut fog_volume, mut fog_transform)) = volume.single_mut() {
+        fog_transform.translation = eye;
+        fog_transform.scale = Vec3::new(220.0, 180.0, 220.0);
         if underwater {
-            let day = sun_daylight(&sun);
-            fog_transform.translation = eye;
-            fog_transform.scale = Vec3::new(420.0, 320.0, 420.0);
-            fog_volume.fog_color = Color::srgb(0.10, 0.32, 0.48);
-            fog_volume.density_factor = 0.014;
-            fog_volume.absorption = 0.0015;
-            fog_volume.scattering = 0.45;
-            fog_volume.scattering_asymmetry = 0.62;
-            fog_volume.light_intensity = 2.2 + 3.0 * day;
+            fog_volume.fog_color = Color::srgb(0.12, 0.40, 0.58);
+            fog_volume.density_factor = 0.008;
+            fog_volume.absorption = 0.02;
+            fog_volume.scattering = (0.75 * godray).min(0.90);
+            fog_volume.scattering_asymmetry = 0.52;
+            fog_volume.light_intensity = (2.0 + 1.0 * moon) * godray;
         } else {
-            let godray = settings.godray_intensity.clamp(0.2, 3.0);
-            fog_transform.translation = eye;
-            fog_transform.scale = Vec3::new(420.0, 320.0, 420.0);
             fog_volume.fog_color = AIR_VOLUME;
-            fog_volume.density_factor = 0.0025 * godray;
-            fog_volume.absorption = 0.15;
-            fog_volume.scattering = (0.35 * godray).min(0.85);
-            fog_volume.scattering_asymmetry = 0.55;
-            fog_volume.light_intensity = 1.0;
+            fog_volume.density_factor = 0.006 * godray;
+            fog_volume.absorption = 0.05;
+            fog_volume.scattering = (0.90 * godray).min(0.90);
+            fog_volume.scattering_asymmetry = 0.52;
+            fog_volume.light_intensity = (2.0 + 1.0 * moon) * godray;
         }
     }
 
     if let Some(mut volumetric) = volumetric {
         if underwater {
-            let day = sun_daylight(&sun);
             volumetric.ambient_color = Color::linear_rgb(0.05, 0.16, 0.26);
-            volumetric.ambient_intensity = 0.2 + 0.4 * day;
+            volumetric.ambient_intensity = 0.08 + 0.32 * day;
         } else {
             volumetric.ambient_color = Color::WHITE;
             volumetric.ambient_intensity = 0.0;
@@ -128,14 +125,19 @@ pub fn update_environment_effects(
     }
 
     if underwater {
-        fog.color = WATER_FOG_COLOR;
-        fog.directional_light_color = WATER_FOG_COLOR;
+        let water_fog = Color::srgb(
+            0.03 + 0.04 * day,
+            0.18 + 0.10 * day,
+            0.32 + 0.14 * day,
+        );
+        fog.color = water_fog;
+        fog.directional_light_color = water_fog;
         fog.directional_light_exponent = 6.0;
         fog.falloff = FogFalloff::Linear {
             start: 0.0,
             end: WATER_FOG_DISTANCE * WATER_FOG_SCALE * settings.fog_radius.max(0.1),
         };
-        *clear = ClearColor(WATER_FOG_COLOR);
+        *clear = ClearColor(water_fog);
     } else {
         fog.falloff = FogFalloff::ExponentialSquared {
             density: FOG_DENSITY / settings.fog_radius.max(0.1),

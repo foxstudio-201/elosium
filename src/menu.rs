@@ -1253,7 +1253,7 @@ fn apply_settings(
         if settings.godrays {
             commands.entity(entity).insert(VolumetricFog {
                 ambient_intensity: 0.0,
-                step_count: 40,
+                step_count: 64,
                 jitter: 0.0,
                 ..default()
             });
