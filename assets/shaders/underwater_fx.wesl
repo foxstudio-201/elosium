@@ -31,7 +31,13 @@ fn light_shafts(uv: vec2<f32>, threshold: f32, strength: f32) -> vec3<f32> {
         return vec3<f32>(0.0);
     }
     let delta = uv - fx.sun_screen.xy;
-    let step = delta / f32(SHAFT_SAMPLES);
+    let distance = length(delta);
+    if distance < 0.0001 {
+        return vec3<f32>(0.0);
+    }
+    let direction = delta / distance;
+    let travel = min(distance, 0.55);
+    let step = direction * (travel / f32(SHAFT_SAMPLES));
     var sample_uv = uv;
     var accumulation = vec3<f32>(0.0);
     var decay = 1.0;
@@ -39,12 +45,10 @@ fn light_shafts(uv: vec2<f32>, threshold: f32, strength: f32) -> vec3<f32> {
         sample_uv -= step;
         let sample = sample_view(sample_uv);
         let bright = max(luminance(sample) - threshold, 0.0);
-        let glow = bright * bright;
-        accumulation += sample * glow * decay;
-        decay *= 0.985;
+        accumulation += sample * bright * bright * decay;
+        decay *= 0.97;
     }
-    let falloff = exp(-length(delta) * 1.0);
-    return accumulation * (strength * 2.4 / f32(SHAFT_SAMPLES)) * falloff;
+    return accumulation * (strength * 2.4 / f32(SHAFT_SAMPLES));
 }
 
 @fragment
@@ -66,7 +70,9 @@ fn fragment(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
     }
 
     if fx.sun_screen.z > 0.5 {
-        color += light_shafts(uv, fx.sun.y, fx.sun_screen.w);
+        let shafts = light_shafts(uv, fx.sun.y, fx.sun_screen.w);
+        let mask = 1.0 - smoothstep(0.55, 0.9, luminance(color));
+        color += shafts * mask;
     }
 
     return vec4<f32>(color, 1.0);

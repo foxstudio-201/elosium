@@ -90,9 +90,9 @@ fn sync_underwater_fx(
     let underwater = state.underwater;
     let night = 1.0 - daylight;
     let threshold = if underwater {
-        0.55 - 0.35 * night
-    } else {
         0.75 - 0.50 * night
+    } else {
+        0.90 - 0.55 * night
     };
     let mut sun_screen = Vec4::ZERO;
     let facing = to_sun.dot(forward);
