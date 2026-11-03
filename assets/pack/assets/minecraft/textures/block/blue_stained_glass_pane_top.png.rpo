@@ -1,0 +1,4 @@
+{
+    condition: "!whimscape.stainedGlassPaneStyle.bare",
+	fallback: "assets/respackopts/minecraft/textures/block/blue_stained_glass_pane_no_frame_top.png"
+}

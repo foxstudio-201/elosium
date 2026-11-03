@@ -1,0 +1,4 @@
+{
+    condition: "!whimscape.glassPaneStyle.bare",
+	fallback: "assets/respackopts/minecraft/textures/block/glass_pane_glass_top.png"
+}

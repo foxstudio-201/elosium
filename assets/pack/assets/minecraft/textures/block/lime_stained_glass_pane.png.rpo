@@ -1,0 +1,7 @@
+{
+    condition: "whimscape.stainedGlassPaneStyle.framedWithCross",
+	fallback: [
+        "assets/respackopts/minecraft/textures/block/lime_stained_glass_pane_no_cross.png",
+        "assets/minecraft/textures/block/lime_stained_glass.png",
+    ]
+}

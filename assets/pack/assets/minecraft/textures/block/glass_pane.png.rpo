@@ -1,0 +1,7 @@
+{
+    condition: "whimscape.glassPaneStyle.framed",
+	fallback: [
+        "assets/respackopts/minecraft/textures/block/glass_pane_cross.png",
+        "assets/minecraft/textures/block/glass.png",
+    ]
+}
