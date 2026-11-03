@@ -1,6 +1,5 @@
 use bevy::{
     light::{FogVolume, GlobalAmbientLight, VolumetricFog},
-    math::Affine2,
     prelude::*,
 };
 
@@ -54,7 +53,6 @@ pub fn update_environment_effects(
     handles: Res<GameMaterials>,
     mut waters: ResMut<Assets<WaterMaterial>>,
     mut blocks: ResMut<Assets<BlockMaterial>>,
-    mut standards: ResMut<Assets<StandardMaterial>>,
     settings: Res<Settings>,
     mut clear: ResMut<ClearColor>,
     mut state: ResMut<EnvironmentState>,
@@ -98,7 +96,7 @@ pub fn update_environment_effects(
         }
     }
     if let Some(mut block) = blocks.get_mut(&handles.block) {
-        block.extension.params.timing = Vec4::new(time.elapsed_secs(), underwater_flag, 1.5, 1.3);
+        block.extension.params.timing = Vec4::new(time.elapsed_secs(), underwater_flag, 0.9, 1.3);
         block.extension.params.surface = Vec4::new(
             if underwater { eye.y + depth } else { 0.0 },
             sun_daylight(&sun),
@@ -110,12 +108,6 @@ pub fn update_environment_effects(
     if underwater {
         ambient.brightness *= 2.2;
         ambient.color = Color::srgb(0.52, 0.74, 1.0);
-    }
-
-    if let Some(mut shadow) = standards.get_mut(&handles.water_shadow) {
-        let seconds = time.elapsed_secs();
-        shadow.uv_transform =
-            Affine2::from_translation(Vec2::new(seconds * 0.0032, seconds * 0.0021));
     }
 
     if let Ok((mut fog_volume, mut fog_transform)) = volume.single_mut() {

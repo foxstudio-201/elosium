@@ -170,7 +170,6 @@ pub struct GameMaterials {
     pub flora: Handle<WindMaterial>,
     pub leaves: Handle<WindMaterial>,
     pub water: Handle<WaterMaterial>,
-    pub water_shadow: Handle<StandardMaterial>,
     pub sky: Handle<SkyMaterial>,
     pub cloud: [Handle<CloudMaterial>; 3],
 }
@@ -180,7 +179,6 @@ pub fn create_materials(
     blocks: &mut Assets<BlockMaterial>,
     winds: &mut Assets<WindMaterial>,
     waters: &mut Assets<WaterMaterial>,
-    standards: &mut Assets<StandardMaterial>,
     skies: &mut Assets<SkyMaterial>,
     cloud_materials: &mut Assets<CloudMaterial>,
     reflection: Handle<Image>,
@@ -295,26 +293,6 @@ pub fn create_materials(
         },
     });
 
-    let water_shadow_texture: Handle<Image> = asset_server
-        .load_builder()
-        .with_settings(|settings: &mut ImageLoaderSettings| {
-            settings.is_srgb = false;
-            settings.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
-                address_mode_u: ImageAddressMode::Repeat,
-                address_mode_v: ImageAddressMode::Repeat,
-                ..default()
-            });
-        })
-        .load("textures/water_shadow.png");
-    let water_shadow = standards.add(StandardMaterial {
-        base_color: Color::WHITE,
-        base_color_texture: Some(water_shadow_texture),
-        alpha_mode: AlphaMode::Mask(0.5),
-        unlit: true,
-        cull_mode: None,
-        ..default()
-    });
-
     let cloud_alphas = [0.85, 0.62, 0.45];
     let cloud = cloud_alphas.map(|alpha| {
         cloud_materials.add(CloudMaterial {
@@ -343,7 +321,6 @@ pub fn create_materials(
         flora,
         leaves,
         water,
-        water_shadow,
         sky,
         cloud,
     }

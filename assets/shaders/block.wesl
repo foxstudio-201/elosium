@@ -89,12 +89,14 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
         let depth = water_coverage * 14.0;
         let fade = 1.0 - 0.6 * smoothstep(6.0, 30.0, depth);
         let daylight = clamp(params.surface.y, 0.0, 1.0);
+        let wall_fade = mix(0.35, 1.0, smoothstep(0.0, 0.6, surface.y));
         let pattern = (layer_a * 0.5 + layer_b * 0.32)
             * facing_sun
+            * wall_fade
             * fade
             * daylight
             * sun_shadow;
-        color += vec3<f32>(0.55, 0.92, 1.0) * pattern * params.timing.z;
+        color += vec3<f32>(0.45, 0.86, 1.0) * pattern * params.timing.z;
     }
 
     let out = main_pass_post_lighting_processing(pbr_input, vec4<f32>(color, 1.0));

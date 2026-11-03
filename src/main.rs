@@ -245,7 +245,6 @@ fn setup(
         &mut block_materials,
         &mut wind_materials,
         &mut water_materials,
-        &mut standard_materials,
         &mut sky_materials,
         &mut cloud_materials,
         reflection_image,

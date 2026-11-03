@@ -45,7 +45,6 @@ struct SectionKey {
 struct SectionEntities {
     opaque: Option<Entity>,
     water: Option<Entity>,
-    water_shadow: Option<Entity>,
     overlay: Option<Entity>,
     leaves: Option<Entity>,
     flora: Option<Entity>,
@@ -56,7 +55,6 @@ impl SectionEntities {
         for entity in [
             self.opaque.take(),
             self.water.take(),
-            self.water_shadow.take(),
             self.overlay.take(),
             self.leaves.take(),
             self.flora.take(),
@@ -233,18 +231,6 @@ fn build_section_entities(
                     Transform::from_translation(origin),
                     RenderLayers::layer(1),
                     NotShadowCaster,
-                ))
-                .id(),
-        );
-    }
-    if let Some(mesh) = data.water_shadow {
-        view.water_shadow = Some(
-            commands
-                .spawn((
-                    Mesh3d(meshes.add(mesh.build())),
-                    MeshMaterial3d(materials.water_shadow.clone()),
-                    Transform::from_translation(origin),
-                    RenderLayers::layer(2),
                 ))
                 .id(),
         );

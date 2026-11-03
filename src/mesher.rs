@@ -194,38 +194,6 @@ impl MeshData {
             .extend_from_slice(&[start, start + 1, start + 2, start, start + 2, start + 3]);
     }
 
-    fn push_water_shadow(
-        &mut self,
-        x: f32,
-        y: f32,
-        z: f32,
-        face: &FaceDef,
-        water_top: f32,
-        origin_x: f32,
-        origin_z: f32,
-    ) {
-        let start = self.positions.len() as u32;
-        for corner in face.corners {
-            let y_offset = if corner[1] == 1 {
-                water_top
-            } else {
-                corner[1] as f32
-            };
-            self.positions.push([
-                x + corner[0] as f32,
-                y + y_offset,
-                z + corner[2] as f32,
-            ]);
-            self.normals.push([0.0, 1.0, 0.0]);
-            let world_x = origin_x + x + corner[0] as f32;
-            let world_z = origin_z + z + corner[2] as f32;
-            self.uvs.push([world_x / 48.0, world_z / 48.0]);
-            self.colors.push([1.0; 4]);
-        }
-        self.indices
-            .extend_from_slice(&[start, start + 1, start + 2, start, start + 2, start + 3]);
-    }
-
     fn push_cross(
         &mut self,
         x: f32,
@@ -532,7 +500,6 @@ fn ray_visibility(world: &VoxelWorld, origin: Vec3, dir: Vec3) -> f32 {
 pub struct SectionMeshes {
     pub opaque: Option<MeshData>,
     pub water: Option<MeshData>,
-    pub water_shadow: Option<MeshData>,
     pub overlay: Option<MeshData>,
     pub leaves: Option<MeshData>,
     pub flora: Option<MeshData>,
@@ -588,7 +555,6 @@ pub fn build_section(
     let origin_y = section_origin_y(section);
     let mut opaque = MeshData::new();
     let mut water = MeshData::new();
-    let mut water_shadow = MeshData::new();
     let mut overlay = MeshData::new();
     let mut leaves = MeshData::new();
     let mut flora = MeshData::new();
@@ -770,17 +736,6 @@ pub fn build_section(
                             1.0,
                             false,
                         );
-                        if face.normal[1] > 0 {
-                            water_shadow.push_water_shadow(
-                                local_x as f32,
-                                local_y as f32,
-                                local_z as f32,
-                                face,
-                                water_top,
-                                origin_x as f32,
-                                origin_z as f32,
-                            );
-                        }
                     }
                     continue;
                 }
@@ -867,7 +822,6 @@ pub fn build_section(
     SectionMeshes {
         opaque: (!opaque.is_empty()).then_some(opaque),
         water: (!water.is_empty()).then_some(water),
-        water_shadow: (!water_shadow.is_empty()).then_some(water_shadow),
         overlay: (!overlay.is_empty()).then_some(overlay),
         leaves: (!leaves.is_empty()).then_some(leaves),
         flora: (!flora.is_empty()).then_some(flora),
