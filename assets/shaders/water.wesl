@@ -151,12 +151,7 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
         let wave = 0.5
             + 0.5 * sin(position.x * 1.7 + time * 0.9 + ripple.x * 6.0)
                 * sin(position.z * 1.3 - time * 0.7 + ripple.y * 5.0);
-        let shimmer = caustic(
-            position.xz * 1.15 + vec2<f32>(time * 0.06, -time * 0.04),
-            time * 1.2,
-        );
-        surface *= 0.82 + 0.30 * wave;
-        surface += vec3<f32>(0.16, 0.38, 0.42) * shimmer * daylight * 1.35;
+        surface *= 0.94 + 0.12 * wave;
         let glint = pow(max(dot(-view_dir, sun), 0.0), 12.0) * 0.35 * daylight;
         surface += params.sun_color.rgb * glint;
         let grazing = pow(1.0 - abs(dot(surface_normal, view_dir)), 3.0);
