@@ -147,7 +147,7 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
         );
         let depth_below = max(params.underwater.y - params.camera_pos.y, 0.0);
         let dim = 1.0 - 0.5 * smoothstep(4.0, 26.0, depth_below);
-        var surface = mix(window, params.water_color.rgb * 2.6, 0.72) * dim;
+        var surface = mix(window, params.water_color.rgb * 1.6, 0.35) * dim;
         let wave = 0.5
             + 0.5 * sin(position.x * 1.7 + time * 0.9 + ripple.x * 6.0)
                 * sin(position.z * 1.3 - time * 0.7 + ripple.y * 5.0);
@@ -156,9 +156,9 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @locatio
         surface += params.sun_color.rgb * glint;
         let grazing = pow(1.0 - abs(dot(surface_normal, view_dir)), 3.0);
         let veil = clamp(
-            0.80 + 0.10 * grazing + 0.20 * (1.0 - look_up),
-            0.80,
-            1.0,
+            0.25 + 0.25 * grazing + 0.20 * (1.0 - look_up),
+            0.25,
+            0.75,
         );
         return vec4<f32>(surface, veil);
     }

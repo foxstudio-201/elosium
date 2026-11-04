@@ -37,7 +37,6 @@ pub fn advance_environment(
     mut skies: ResMut<Assets<SkyMaterial>>,
     mut cloud_materials: ResMut<Assets<CloudMaterial>>,
     settings: Res<Settings>,
-    environment: Res<crate::environment::EnvironmentState>,
 ) {
     cycle.time = (cycle.time + time.delta_secs() / DAY_LENGTH) % 1.0;
     let seconds = time.elapsed_secs();
@@ -137,11 +136,7 @@ pub fn advance_environment(
     let cloud_twilight = Vec3::new(1.0, 0.72, 0.52);
     let cloud_night = Vec3::new(0.14, 0.17, 0.26);
     let cloud_color = blend(cloud_day, cloud_twilight, cloud_night);
-    let cloud_alphas = if environment.underwater {
-        [0.0f32, 0.0, 0.0]
-    } else {
-        [0.85f32, 0.62, 0.45]
-    };
+    let cloud_alphas = [0.85f32, 0.62, 0.45];
     for (index, handle) in handles.cloud.iter().enumerate() {
         if let Some(mut material) = cloud_materials.get_mut(handle) {
             material.params.color =
