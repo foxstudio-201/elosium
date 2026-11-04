@@ -3,7 +3,7 @@ use bevy::{
     prelude::*,
     ui::{InteractionDisabled, Pressed, UiGlobalTransform},
     ui_widgets::Button,
-    window::PrimaryWindow,
+    window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 
 #[derive(Resource, Clone)]
@@ -33,15 +33,20 @@ pub struct UiAssets {
     pub bar_fill_hp: Handle<Image>,
     pub bar_fill_mp: Handle<Image>,
     pub bar_segments: Handle<Image>,
+    pub cursor_pointer: Handle<Image>,
 }
 
 fn load(server: &AssetServer, file: &str) -> Handle<Image> {
+    load_path(server, format!("ui/emberhold/{file}"))
+}
+
+fn load_path(server: &AssetServer, path: String) -> Handle<Image> {
     server
         .load_builder()
         .with_settings(|settings: &mut ImageLoaderSettings| {
             settings.sampler = ImageSampler::linear();
         })
-        .load::<Image>(format!("ui/emberhold/{file}"))
+        .load::<Image>(path)
 }
 
 impl FromWorld for UiAssets {
@@ -73,6 +78,7 @@ impl FromWorld for UiAssets {
             bar_fill_hp: load(server, "bar_fill_hp.png"),
             bar_fill_mp: load(server, "bar_fill_mp.png"),
             bar_segments: load(server, "bar_segments.png"),
+            cursor_pointer: load_path(server, "ui/cursor/pointer.png".to_string()),
         }
     }
 }
@@ -109,13 +115,58 @@ pub struct UiButtonSkin {
 #[derive(Component)]
 pub struct ThemeSkip;
 
+#[derive(Component)]
+pub struct UiCursor;
+
 pub struct UiThemePlugin;
 
 impl Plugin for UiThemePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<UiAssets>()
-            .add_systems(Update, (theme_new_buttons, update_button_skin));
+            .add_systems(Startup, spawn_ui_cursor)
+            .add_systems(Update, (theme_new_buttons, update_button_skin))
+            .add_systems(Last, update_ui_cursor);
     }
+}
+
+fn spawn_ui_cursor(assets: Res<UiAssets>, mut commands: Commands) {
+    commands.spawn((
+        UiCursor,
+        ImageNode {
+            image: assets.cursor_pointer.clone(),
+            ..default()
+        },
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(0.0),
+            top: Val::Px(0.0),
+            width: Val::Px(32.0),
+            height: Val::Px(32.0),
+            ..default()
+        },
+        GlobalZIndex(2000),
+        Visibility::Hidden,
+    ));
+}
+
+fn update_ui_cursor(
+    window: Query<&Window, With<PrimaryWindow>>,
+    mut cursor: Single<&mut CursorOptions>,
+    mut pointer: Query<(&mut Node, &mut Visibility), With<UiCursor>>,
+) {
+    let Ok((mut node, mut visibility)) = pointer.single_mut() else {
+        return;
+    };
+    let menus = cursor.grab_mode == CursorGrabMode::None;
+    match window.single().ok().and_then(Window::cursor_position) {
+        Some(position) if menus => {
+            node.left = Val::Px(position.x - 4.0);
+            node.top = Val::Px(position.y - 4.0);
+            *visibility = Visibility::Inherited;
+        }
+        _ => *visibility = Visibility::Hidden,
+    }
+    cursor.visible = false;
 }
 
 fn theme_new_buttons(
