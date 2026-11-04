@@ -470,7 +470,7 @@ pub fn spawn_menu(commands: &mut Commands, asset_server: &AssetServer) {
                     .with_children(|page| {
                         button(page, &font, "Tiếp tục", Action::Resume, 340.0, 44.0);
                         button(page, &font, "Cài đặt", Action::OpenSettings, 340.0, 44.0);
-                        button(page, &font, "Về màn hình chính", Action::ToTitle, 340.0, 44.0);
+                        button(page, &font, "Lưu & thoát ra tiêu đề", Action::ToTitle, 340.0, 44.0);
                         button(page, &font, "Thoát game", Action::Quit, 340.0, 44.0);
                     });
 

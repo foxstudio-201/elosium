@@ -909,6 +909,12 @@ impl VoxelWorld {
         true
     }
 
+    pub fn clear_chunks(&mut self) {
+        self.chunks.clear();
+        self.flow.clear();
+        self.occluders.clear();
+    }
+
     pub fn unload_chunk(&mut self, pos: ChunkPos) -> bool {
         self.flow
             .retain(|(x, _, z), _| ChunkPos::from_block(*x, *z) != pos);

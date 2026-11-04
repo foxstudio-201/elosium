@@ -1006,6 +1006,9 @@ fn process_start_request(
     let Some(meta) = start.0.take() else {
         return;
     };
+    if matches!(screen.screen, Screen::Loading | Screen::Playing) {
+        return;
+    }
     let Ok(mut player) = players.single_mut() else {
         return;
     };
@@ -2183,7 +2186,9 @@ fn autosave_world(
 fn save_world_state(
     screen: Res<ScreenState>,
     mut active: ResMut<ActiveWorld>,
-    world: Res<VoxelWorld>,
+    mut world: ResMut<VoxelWorld>,
+    mut renderer: ResMut<crate::streaming::ChunkRenderer>,
+    mut commands: Commands,
     day: Res<DayCycle>,
     players: Query<&Player, With<Camera3d>>,
     mut last: Local<Option<Screen>>,
@@ -2208,6 +2213,8 @@ fn save_world_state(
     }
     if leaving {
         active.0 = None;
+        renderer.reset(&mut commands);
+        world.clear_chunks();
     }
 }
 
