@@ -1068,3 +1068,36 @@ pub fn load_identity() -> (u128, String) {
     }
     (uuid, identity.name)
 }
+
+pub fn respawn_on_death(
+    mut vitals: ResMut<Vitals>,
+    spawn: Res<SpawnPoint>,
+    mut players: Query<&mut Player, With<Camera3d>>,
+) {
+    if vitals.health > 0.0 {
+        return;
+    }
+    let Ok(mut player) = players.single_mut() else {
+        return;
+    };
+    player.feet = spawn.0;
+    player.prev_feet = spawn.0;
+    player.render_feet = spawn.0;
+    player.velocity = Vec3::ZERO;
+    player.on_ground = false;
+    player.flying = false;
+    player.fall_distance = 0.0;
+    player.pose = PlayerPose::Standing;
+    player.jump_trigger_time = 0;
+    player.prev_jump = false;
+    player.eye_height_current = EYE_HEIGHT;
+    player.eye_height_prev = EYE_HEIGHT;
+    vitals.health = 20.0;
+    vitals.hunger = 20.0;
+    vitals.thirst = 20.0;
+    vitals.stamina = 100.0;
+    vitals.mana = 100.0;
+    vitals.exhaustion = 0.0;
+    vitals.regen_timer = 0.0;
+    vitals.starve_timer = 0.0;
+}

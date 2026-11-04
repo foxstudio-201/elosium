@@ -8,9 +8,13 @@ use bevy::{
 
 use crate::{
     blocks::Block,
+    chat::ChatState,
     debug::HudVisible,
-    frontend::{Screen, ScreenState},
+    environment::EnvironmentState,
+    frontend::{GameRules, Screen, ScreenState},
+    menu::MenuState,
     pack_atlas::{BLOCK_UV_RECTS, FLORA_UV_RECTS, LEAF_UV_RECTS},
+    player::Player,
 };
 
 pub const HOTBAR_SLOTS: usize = 9;
@@ -76,6 +80,9 @@ pub struct Vitals {
     pub thirst: f32,
     pub xp: f32,
     pub level: u32,
+    pub exhaustion: f32,
+    pub regen_timer: f32,
+    pub starve_timer: f32,
 }
 
 impl Default for Vitals {
@@ -89,6 +96,9 @@ impl Default for Vitals {
             thirst: 20.0,
             xp: 0.0,
             level: 0,
+            exhaustion: 0.0,
+            regen_timer: 0.0,
+            starve_timer: 0.0,
         }
     }
 }
@@ -199,6 +209,7 @@ impl Plugin for HudPlugin {
                     sync_hud_visibility,
                     update_hotbar_selection,
                     update_slot_icons,
+                    update_vitals,
                     update_bars,
                 ),
             );
@@ -677,5 +688,70 @@ fn update_slot_icons(
                 *visibility = Visibility::Hidden;
             }
         }
+    }
+}
+
+fn update_vitals(
+    time: Res<Time>,
+    rules: Res<GameRules>,
+    menu: Res<MenuState>,
+    chat: Res<ChatState>,
+    environment: Res<EnvironmentState>,
+    players: Query<&Player, With<Camera3d>>,
+    mut vitals: ResMut<Vitals>,
+) {
+    if rules.gamemode != 0 || menu.open || chat.open {
+        return;
+    }
+    let Ok(player) = players.single() else {
+        return;
+    };
+    let dt = time.delta_secs().min(0.1);
+    if dt <= 0.0 {
+        return;
+    }
+    let speed = player.speed_mps();
+    let sprinting = player.sprinting && speed > 1.0;
+
+    vitals.stamina = if sprinting {
+        (vitals.stamina - 14.0 * dt).max(0.0)
+    } else {
+        (vitals.stamina + 9.0 * dt).min(100.0)
+    };
+    vitals.mana = (vitals.mana + 3.0 * dt).min(100.0);
+
+    let thirst_rate = if sprinting { 0.05 } else { 0.02 };
+    if environment.underwater {
+        vitals.thirst = (vitals.thirst + 8.0 * dt).min(20.0);
+    } else {
+        vitals.thirst = (vitals.thirst - thirst_rate * dt).max(0.0);
+    }
+
+    let distance = speed * dt;
+    vitals.exhaustion += distance * if sprinting { 0.1 } else { 0.01 };
+    while vitals.exhaustion >= 4.0 {
+        vitals.exhaustion -= 4.0;
+        vitals.hunger = (vitals.hunger - 1.0).max(0.0);
+    }
+
+    if vitals.health < 20.0 && vitals.hunger >= 18.0 && vitals.thirst >= 6.0 {
+        vitals.regen_timer += dt;
+        if vitals.regen_timer >= 4.0 {
+            vitals.regen_timer = 0.0;
+            vitals.health = (vitals.health + 1.0).min(20.0);
+            vitals.exhaustion += 6.0;
+        }
+    } else {
+        vitals.regen_timer = 0.0;
+    }
+
+    if vitals.hunger <= 0.0 || vitals.thirst <= 0.0 {
+        vitals.starve_timer += dt;
+        if vitals.starve_timer >= 4.0 {
+            vitals.starve_timer = 0.0;
+            vitals.health = (vitals.health - 1.0).max(0.0);
+        }
+    } else {
+        vitals.starve_timer = 0.0;
     }
 }

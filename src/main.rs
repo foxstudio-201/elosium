@@ -53,15 +53,14 @@ use mesher::sky_cube_mesh;
 use outline::{spawn_block_outline, update_block_outline};
 use player::{
     advance_swing, apply_camera_view, enforce_mode2_cursor, grab_cursor,
-    orbit_drag_control, player_controller, toggle_view, update_body_yaw, update_head_aim, Player,
-    PlayerPose, SpawnPoint, ViewMode, EYE_HEIGHT,
+    orbit_drag_control, player_controller, respawn_on_death, toggle_view, update_body_yaw,
+    update_head_aim, Player, PlayerPose, SpawnPoint, ViewMode, EYE_HEIGHT,
 };
 use player_model::{
     animate_first_person_arm, animate_player_model, clear_clones_off_world,
     push_player_from_clones, spawn_clone_players, spawn_held_block, spawn_player_model,
     tick_clones, update_held_block, update_name_tags, SpawnClone,
-};
-use reflection::{create_image, spawn_camera, sync_reflection, ReflectionCamera};
+};use reflection::{create_image, spawn_camera, sync_reflection, ReflectionCamera};
 use streaming::{stream_chunks, update_occluders, ChunkRenderer, LoadWarmup, RenderSettings};
 use water::{tick_water, WaterFlowTimer};
 use world::{ChunkPos, VoxelWorld};
@@ -182,6 +181,7 @@ fn main() {
                     update_player_layers,
                     animate_first_person_arm,
                     update_held_block,
+                    respawn_on_death,
                     spawn_clone_players,
                     tick_clones,
                     update_name_tags,
