@@ -38,11 +38,6 @@ fn value_noise(point: vec2<f32>) -> f32 {
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let direction = normalize(in.world_position.xyz - params.camera_pos.xyz);
-    if params.water.x > 0.5 {
-        let water = params.water.yzw;
-        let up = clamp(direction.y, 0.0, 1.0);
-        return vec4<f32>(mix(water * 0.85, water * 1.08, pow(up, 0.55)), 1.0);
-    }
     let sky = clamp(direction.y, 0.0, 1.0);
     let sun = normalize(params.sun_dir.xyz);
     let night = params.timing.y;
@@ -68,6 +63,12 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
         let star = step(0.9982, hash31(cell));
         let twinkle = 0.6 + 0.4 * sin(time * 2.0 + hash31(cell + vec3<f32>(7.31)) * 12.0);
         color += vec3<f32>(0.85, 0.90, 1.0) * star * night * twinkle;
+    }
+
+    if params.water.x > 0.5 {
+        let water = params.water.yzw;
+        let above = clamp(direction.y, 0.0, 1.0);
+        color = mix(water, color, 0.34 + 0.56 * above);
     }
 
     return vec4<f32>(color, 1.0);

@@ -514,7 +514,7 @@ fn simulate_tick(
         (feet.y + player.eye_height()).floor() as i32,
         feet.z.floor() as i32,
     );
-    let under_water = fluid.in_water && eye_block.is_water();
+    let under_water = fluid.in_water && (eye_block.is_water() || eye_block.is_water_plant());
 
     let has_enough = if under_water {
         input.forward > 1.0e-5
@@ -577,13 +577,12 @@ fn simulate_tick(
         velocity.y -= 0.04;
     }
 
-    let foot_block_water = world
-        .get_block(
-            feet.x.floor() as i32,
-            feet.y.floor() as i32,
-            feet.z.floor() as i32,
-        )
-        .is_water();
+    let foot_block = world.get_block(
+        feet.x.floor() as i32,
+        feet.y.floor() as i32,
+        feet.z.floor() as i32,
+    );
+    let foot_block_water = foot_block.is_water() || foot_block.is_water_plant();
     if player.flying {
         player.swimming = false;
     } else if player.swimming {
@@ -623,13 +622,12 @@ fn simulate_tick(
     if player.swimming {
         let look_y = player.pitch.sin();
         let boost = if look_y < -0.2 { 0.085 } else { 0.06 };
-        let head_water = world
-            .get_block(
-                feet.x.floor() as i32,
-                (feet.y + 0.9).floor() as i32,
-                feet.z.floor() as i32,
-            )
-            .is_water();
+        let head_block = world.get_block(
+            feet.x.floor() as i32,
+            (feet.y + 0.9).floor() as i32,
+            feet.z.floor() as i32,
+        );
+        let head_water = head_block.is_water() || head_block.is_water_plant();
         if look_y <= 0.0 || input.jump || head_water {
             velocity.y += (look_y - velocity.y) * boost;
         }
@@ -834,10 +832,15 @@ fn fluid_state(world: &VoxelWorld, feet: Vec3, pose: PlayerPose) -> FluidState {
     for x in min.x.floor() as i32..=max.x.floor() as i32 {
         for y in min.y.floor() as i32..=max.y.floor() as i32 {
             for z in min.z.floor() as i32..=max.z.floor() as i32 {
-                if !world.get_block(x, y, z).is_water() {
+                let block = world.get_block(x, y, z);
+                if !block.is_water() && !block.is_water_plant() {
                     continue;
                 }
-                let level = world.water_level(x, y, z).unwrap_or(0) as f32;
+                let level = if block.is_water() {
+                    world.water_level(x, y, z).unwrap_or(0) as f32
+                } else {
+                    0.0
+                };
                 let surface = y as f32 + 0.875 - level * 0.1;
                 if surface >= min.y {
                     state.in_water = true;

@@ -5,21 +5,18 @@ use bevy::{
 
 use crate::{
     daynight::SunLight,
-    materials::{BlockMaterial, FOG_DENSITY, GameMaterials, WaterMaterial},
+    materials::{
+        BlockMaterial, CloudMaterial, FOG_DENSITY, GameMaterials, SkyMaterial, WaterMaterial,
+    },
     menu::Settings,
     reflection::ReflectionCamera,
     world::VoxelWorld,
 };
 
-const WATER_FOG_DISTANCE: f32 = 96.0;
-const WATER_FOG_SCALE: f32 = 0.32;
 const AIR_VOLUME: Color = Color::srgb(0.78, 0.85, 0.96);
 
 #[derive(Component)]
 pub struct GlobalFogVolume;
-
-#[derive(Component)]
-pub struct WaterCeiling;
 
 #[derive(Resource)]
 pub struct EnvironmentState {
@@ -49,25 +46,22 @@ pub fn update_environment_effects(
     handles: Res<GameMaterials>,
     mut waters: ResMut<Assets<WaterMaterial>>,
     mut blocks: ResMut<Assets<BlockMaterial>>,
+    mut skies: ResMut<Assets<SkyMaterial>>,
+    mut clouds: ResMut<Assets<CloudMaterial>>,
     settings: Res<Settings>,
     mut clear: ResMut<ClearColor>,
     mut state: ResMut<EnvironmentState>,
-    mut ceiling: Query<
-        (&mut Transform, &mut Visibility),
-        (With<WaterCeiling>, Without<Camera3d>, Without<GlobalFogVolume>),
-    >,
 ) {
     let Ok((transform, mut fog, volumetric)) = camera.single_mut() else {
         return;
     };
     let eye = transform.translation;
-    let underwater = world
-        .get_block(
-            eye.x.floor() as i32,
-            eye.y.floor() as i32,
-            eye.z.floor() as i32,
-        )
-        .is_water();
+    let eye_block = world.get_block(
+        eye.x.floor() as i32,
+        eye.y.floor() as i32,
+        eye.z.floor() as i32,
+    );
+    let underwater = eye_block.is_water() || eye_block.is_water_plant();
     state.underwater = underwater;
 
     let depth = if underwater {
@@ -80,6 +74,14 @@ pub fn update_environment_effects(
     let day = sun_daylight(&sun);
     let moon = (1.0 - day).clamp(0.0, 1.0);
     let godray = settings.godray_intensity.clamp(0.2, 3.0);
+    let depth_below = (state.water_surface - eye.y).max(0.0);
+    let deep = (depth_below / 28.0).clamp(0.0, 1.0);
+    let light = 0.12 + 0.88 * day;
+    let shallow = Vec3::new(0.10, 0.36, 0.44);
+    let deep_color = Vec3::new(0.02, 0.09, 0.17);
+    let tint = shallow.lerp(deep_color, deep) * light;
+    let water_fog = Color::srgb(tint.x, tint.y, tint.z);
+
     if let Some(mut water) = waters.get_mut(&handles.water) {
         water.extension.params.underwater = Vec4::new(
             underwater_flag,
@@ -88,7 +90,7 @@ pub fn update_environment_effects(
             0.0,
         );
         if underwater {
-            water.extension.params.fog_color = Vec4::new(0.02, 0.16, 0.28, 0.0);
+            water.extension.params.fog_color = Vec4::new(tint.x, tint.y, tint.z, 0.0);
         }
     }
     if let Some(mut block) = blocks.get_mut(&handles.block) {
@@ -100,34 +102,36 @@ pub fn update_environment_effects(
             0.0,
         );
     }
-
-    for (mut transform, mut visibility) in &mut ceiling {
-        transform.translation = Vec3::new(eye.x, crate::world::WATER_SURFACE_HEIGHT - 0.06, eye.z);
-        *visibility = if underwater {
-            Visibility::Inherited
+    if let Some(mut sky) = skies.get_mut(&handles.sky) {
+        sky.params.water = if underwater {
+            Vec4::new(1.0, tint.x, tint.y, tint.z)
         } else {
-            Visibility::Hidden
+            Vec4::ZERO
         };
+    }
+    if underwater {
+        for handle in &handles.cloud {
+            if let Some(mut cloud) = clouds.get_mut(handle) {
+                let color = cloud.params.color;
+                cloud.params.color = Vec4::new(
+                    color.x * 0.68 + tint.x * 0.32,
+                    color.y * 0.68 + tint.y * 0.32,
+                    color.z * 0.68 + tint.z * 0.32,
+                    color.w,
+                );
+            }
+        }
     }
 
     if let Ok((mut fog_volume, mut fog_transform)) = volume.single_mut() {
         fog_transform.translation = eye;
         fog_transform.scale = Vec3::new(220.0, 180.0, 220.0);
-        if underwater {
-            fog_volume.fog_color = Color::srgb(0.10, 0.36, 0.44);
-            fog_volume.density_factor = 0.020;
-            fog_volume.absorption = 0.015;
-            fog_volume.scattering = 0.92;
-            fog_volume.scattering_asymmetry = 0.18;
-            fog_volume.light_intensity = (2.2 + 0.6 * moon) * godray.powf(0.7);
-        } else {
-            fog_volume.fog_color = AIR_VOLUME;
-            fog_volume.density_factor = 0.0045;
-            fog_volume.absorption = 0.02;
-            fog_volume.scattering = 0.70;
-            fog_volume.scattering_asymmetry = 0.40;
-            fog_volume.light_intensity = (1.2 + 0.4 * moon) * godray.powf(0.7);
-        }
+        fog_volume.fog_color = if underwater { water_fog } else { AIR_VOLUME };
+        fog_volume.density_factor = 0.0045;
+        fog_volume.absorption = 0.02;
+        fog_volume.scattering = 0.70;
+        fog_volume.scattering_asymmetry = 0.40;
+        fog_volume.light_intensity = (1.2 + 0.4 * moon) * godray.powf(0.7);
     }
 
     if let Some(mut volumetric) = volumetric {
@@ -141,28 +145,18 @@ pub fn update_environment_effects(
     }
 
     if underwater {
-        let depth_below = (state.water_surface - eye.y).max(0.0);
-        let deep = (depth_below / 28.0).clamp(0.0, 1.0);
-        let light = 0.12 + 0.88 * day;
-        let shallow = Vec3::new(0.10, 0.36, 0.44);
-        let deep_color = Vec3::new(0.02, 0.09, 0.17);
-        let tint = shallow.lerp(deep_color, deep) * light;
-        let water_fog = Color::srgb(tint.x, tint.y, tint.z);
         fog.color = water_fog;
         fog.directional_light_color = water_fog;
-        fog.directional_light_exponent = 6.0;
-        fog.falloff = FogFalloff::Linear {
-            start: 0.0,
-            end: WATER_FOG_DISTANCE * WATER_FOG_SCALE * settings.fog_radius.max(0.1),
-        };
-        *clear = ClearColor(water_fog);
-    } else {
-        fog.falloff = FogFalloff::ExponentialSquared {
-            density: FOG_DENSITY / settings.fog_radius.max(0.1),
-        };
-        fog.directional_light_exponent = 6.0;
-        *clear = ClearColor(Color::srgb(0.55, 0.72, 0.95));
     }
+    fog.directional_light_exponent = 6.0;
+    fog.falloff = FogFalloff::ExponentialSquared {
+        density: FOG_DENSITY / settings.fog_radius.max(0.1),
+    };
+    *clear = ClearColor(if underwater {
+        water_fog
+    } else {
+        Color::srgb(0.55, 0.72, 0.95)
+    });
 
     for mut mirrored in mirror_fog.iter_mut() {
         mirrored.falloff = fog.falloff.clone();
@@ -182,15 +176,17 @@ fn water_depth(world: &VoxelWorld, eye: Vec3) -> f32 {
     let x = eye.x.floor() as i32;
     let z = eye.z.floor() as i32;
     let mut y = eye.y.floor() as i32;
-    let mut top = None;
-    while world.get_block(x, y, z).is_water() {
-        top = Some(y);
+    let mut surface = None;
+    loop {
+        let block = world.get_block(x, y, z);
+        if !block.is_water() && !block.is_water_plant() {
+            break;
+        }
+        if block.is_water() {
+            let level = world.water_level(x, y, z).unwrap_or(0) as f32;
+            surface = Some(y as f32 + 0.875 - level * 0.1);
+        }
         y += 1;
     }
-    let Some(top) = top else {
-        return 0.0;
-    };
-    let level = world.water_level(x, top, z).unwrap_or(0) as f32;
-    let surface = top as f32 + 0.875 - level * 0.1;
-    (surface - eye.y).max(0.0)
+    surface.map(|value| (value - eye.y).max(0.0)).unwrap_or(0.0)
 }

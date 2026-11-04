@@ -35,7 +35,7 @@ use bevy::{
     camera::visibility::{CascadesVisibleEntities, RenderLayers},
     image::ImagePlugin,
     input::keyboard::KeyCode,
-    light::{CascadeShadowConfigBuilder, FogVolume, NotShadowCaster, VolumetricFog, VolumetricLight},
+    light::{CascadeShadowConfigBuilder, FogVolume, VolumetricFog, VolumetricLight},
     prelude::*,
     render::view::screenshot::{save_to_disk, Screenshot},
     window::{Window, WindowPlugin},
@@ -255,25 +255,6 @@ fn setup(
         reflection_image,
     );
     clouds::spawn_clouds(&mut commands, &mut meshes, &handles);
-    {
-        let ceiling_material = standard_materials.add(StandardMaterial {
-            base_color: Color::srgb(0.12, 0.34, 0.42),
-            cull_mode: None,
-            ..default()
-        });
-        let mut ceiling_transform =
-            Transform::from_xyz(0.0, crate::world::WATER_SURFACE_HEIGHT, 0.0);
-        ceiling_transform.rotate_local_x(-std::f32::consts::FRAC_PI_2);
-        commands.spawn((
-            environment::WaterCeiling,
-            Mesh3d(meshes.add(Rectangle::new(1600.0, 1600.0))),
-            MeshMaterial3d(ceiling_material),
-            ceiling_transform,
-            Visibility::Hidden,
-            NotShadowCaster,
-            RenderLayers::layer(0),
-        ));
-    }
     spawn_crosshair(&mut commands, &mut meshes, &mut standard_materials);
     spawn_debug_overlay(&mut commands, &asset_server);
     spawn_debug_boxes(&mut commands, &mut meshes, &mut standard_materials);

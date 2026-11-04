@@ -256,6 +256,11 @@ pub fn raycast(
     direction: Vec3,
     max_distance: f32,
 ) -> Option<(i32, i32, i32)> {
+    let start = (
+        origin.x.floor() as i32,
+        origin.y.floor() as i32,
+        origin.z.floor() as i32,
+    );
     let mut distance = 0.0;
     while distance <= max_distance {
         let point = origin + direction * distance;
@@ -264,7 +269,7 @@ pub fn raycast(
             point.y.floor() as i32,
             point.z.floor() as i32,
         );
-        if world.get_block(block.0, block.1, block.2).is_targetable() {
+        if block != start && world.get_block(block.0, block.1, block.2).is_targetable() {
             return Some(block);
         }
         distance += 0.05;
