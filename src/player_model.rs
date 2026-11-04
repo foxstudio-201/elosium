@@ -39,8 +39,166 @@ pub enum PlayerPart {
     Body,
     ArmLeft,
     ArmRight,
+    ForearmLeft,
+    ForearmRight,
     LegLeft,
     LegRight,
+}
+
+#[derive(Component)]
+pub struct PlayerLimb;
+
+#[derive(Component)]
+pub struct PlayerLayer;
+
+#[derive(Clone, Copy, Default)]
+pub struct LimbBox {
+    pub min: Vec3,
+    pub max: Vec3,
+}
+
+impl LimbBox {
+    pub fn overlaps(&self, min: Vec3, max: Vec3) -> bool {
+        self.min.x < max.x
+            && self.max.x > min.x
+            && self.min.y < max.y
+            && self.max.y > min.y
+            && self.min.z < max.z
+            && self.max.z > min.z
+    }
+
+    pub fn center(&self) -> Vec3 {
+        (self.min + self.max) * 0.5
+    }
+}
+
+#[derive(Resource, Default)]
+pub struct LimbContacts {
+    pub boxes: [LimbBox; 8],
+    pub hands: [Vec3; 2],
+    pub feet: [Vec3; 2],
+}
+
+const SLOT_HEAD: usize = 0;
+const SLOT_BODY: usize = 1;
+const SLOT_ARM_LEFT: usize = 2;
+const SLOT_ARM_RIGHT: usize = 3;
+const SLOT_FOREARM_LEFT: usize = 4;
+const SLOT_FOREARM_RIGHT: usize = 5;
+const SLOT_LEG_LEFT: usize = 6;
+const SLOT_LEG_RIGHT: usize = 7;
+
+fn part_slot(part: PlayerPart) -> usize {
+    match part {
+        PlayerPart::Head => SLOT_HEAD,
+        PlayerPart::Body => SLOT_BODY,
+        PlayerPart::ArmLeft => SLOT_ARM_LEFT,
+        PlayerPart::ArmRight => SLOT_ARM_RIGHT,
+        PlayerPart::ForearmLeft => SLOT_FOREARM_LEFT,
+        PlayerPart::ForearmRight => SLOT_FOREARM_RIGHT,
+        PlayerPart::LegLeft => SLOT_LEG_LEFT,
+        PlayerPart::LegRight => SLOT_LEG_RIGHT,
+    }
+}
+
+fn part_bounds(part: PlayerPart) -> (Vec3, Vec3) {
+    PARTS
+        .iter()
+        .find(|(kind, _, _, _, _, _)| *kind == part)
+        .map(|(_, _, min, max, _, _)| (*min, *max))
+        .unwrap_or((Vec3::ZERO, Vec3::ZERO))
+}
+
+fn aim_bone(direction: Vec3, reference: Vec3) -> Quat {
+    let y = -direction.normalize_or_zero();
+    if y.length_squared() < 1.0e-6 {
+        return Quat::IDENTITY;
+    }
+    let mut z = reference - y * reference.dot(y);
+    if z.length_squared() < 1.0e-6 {
+        z = if y.y.abs() < 0.9 {
+            Vec3::Y.cross(y)
+        } else {
+            Vec3::X.cross(y)
+        };
+    }
+    let z = z.normalize_or_zero();
+    let x = y.cross(z).normalize_or_zero();
+    Quat::from_mat3(&Mat3::from_cols(x, y, z))
+}
+
+fn solve_two_bone(
+    shoulder: Vec3,
+    target: Vec3,
+    upper: f32,
+    lower: f32,
+    pole: Vec3,
+) -> Option<(Vec3, Vec3)> {
+    let delta = target - shoulder;
+    let raw = delta.length();
+    if raw < 1.0e-4 {
+        return None;
+    }
+    let direction = delta / raw;
+    let reach = raw.clamp((upper - lower).abs() + 0.02, upper + lower - 0.02);
+    let along = (upper * upper - lower * lower + reach * reach) / (2.0 * reach);
+    let height = (upper * upper - along * along).max(0.0).sqrt();
+    let pole_dir = (pole - direction * pole.dot(direction)).normalize_or_zero();
+    let elbow = shoulder + direction * along + pole_dir * height;
+    let hand = shoulder + direction * reach;
+    Some((elbow, hand))
+}
+
+fn hand_contact_target(
+    world: &crate::world::VoxelWorld,
+    shoulder: Vec3,
+    feet: Vec3,
+    side: Vec3,
+    moving: bool,
+) -> Option<(Vec3, f32)> {
+    let base = shoulder.floor();
+    let mut solid: Option<(f32, Vec3)> = None;
+    let mut plant: Option<(f32, Vec3)> = None;
+    for dx in -1..=1 {
+        for dy in -1..=1 {
+            for dz in -1..=1 {
+                let x = base.x as i32 + dx;
+                let y = base.y as i32 + dy;
+                let z = base.z as i32 + dz;
+                let block = world.get_block(x, y, z);
+                if !block.is_solid() && !(moving && block.is_plant()) {
+                    continue;
+                }
+                let min = Vec3::new(x as f32, y as f32, z as f32);
+                let max = min + Vec3::ONE;
+                let nearest = shoulder.clamp(min, max);
+                let offset = nearest - shoulder;
+                let distance = offset.length();
+                if distance < 0.01 || distance > 0.56 {
+                    continue;
+                }
+                let lateral = offset.normalize_or_zero().dot(side);
+                if lateral < 0.15 {
+                    continue;
+                }
+                let point = nearest + offset.normalize_or_zero() * 0.02;
+                if block.is_solid() {
+                    let top = y as f32 + 1.0;
+                    let hand_band = nearest.y >= feet.y + 0.5 && nearest.y <= feet.y + 1.75;
+                    let step = top >= feet.y + 0.95 && top <= feet.y + 2.0;
+                    if (hand_band || step) && solid.map_or(true, |(best, _)| distance < best) {
+                        solid = Some((distance, point));
+                    }
+                } else if moving && plant.map_or(true, |(best, _)| distance < best) {
+                    plant = Some((distance, point));
+                }
+            }
+        }
+    }
+    if let Some((_, point)) = solid {
+        return Some((point, 1.0));
+    }
+    plant.map(|(_, point)| (point, 0.55))
 }
 
 #[derive(Component)]
@@ -59,6 +217,9 @@ const CLONE_SKIN: f32 = 0.001;
 pub struct ClonePart;
 
 #[derive(Component)]
+pub struct CloneOwner(pub Entity);
+
+#[derive(Component)]
 pub struct NameTag(pub Entity);
 
 #[derive(Message)]
@@ -66,12 +227,14 @@ pub struct SpawnClone {
     pub name: String,
 }
 
-const PARTS: [(PlayerPart, Vec3, Vec3, Vec3, Vec2); 6] = [
+const ARM_LENGTH: f32 = 5.0;
+const PARTS: [(PlayerPart, Vec3, Vec3, Vec3, Vec2, Vec2); 8] = [
     (
         PlayerPart::Head,
         Vec3::new(0.0, 24.0, 0.0),
         Vec3::new(-4.0, 0.0, -4.0),
         Vec3::new(4.0, 8.0, 4.0),
+        Vec2::new(0.0, 0.0),
         Vec2::new(0.0, 0.0),
     ),
     (
@@ -80,20 +243,39 @@ const PARTS: [(PlayerPart, Vec3, Vec3, Vec3, Vec2); 6] = [
         Vec3::new(-4.0, -12.0, -2.0),
         Vec3::new(4.0, 0.0, 2.0),
         Vec2::new(16.0, 16.0),
+        Vec2::new(16.0, 16.0),
     ),
     (
         PlayerPart::ArmRight,
         Vec3::new(6.0, 22.0, 0.0),
-        Vec3::new(-2.0, -10.0, -2.0),
+        Vec3::new(-2.0, -ARM_LENGTH, -2.0),
         Vec3::new(2.0, 2.0, 2.0),
+        Vec2::new(40.0, 16.0),
         Vec2::new(40.0, 16.0),
     ),
     (
         PlayerPart::ArmLeft,
         Vec3::new(-6.0, 22.0, 0.0),
-        Vec3::new(-2.0, -10.0, -2.0),
+        Vec3::new(-2.0, -ARM_LENGTH, -2.0),
         Vec3::new(2.0, 2.0, 2.0),
         Vec2::new(32.0, 48.0),
+        Vec2::new(32.0, 48.0),
+    ),
+    (
+        PlayerPart::ForearmRight,
+        Vec3::new(0.0, -ARM_LENGTH, 0.0),
+        Vec3::new(-1.98, -ARM_LENGTH, -1.98),
+        Vec3::new(1.98, 1.0, 1.98),
+        Vec2::new(40.0, 21.0),
+        Vec2::new(40.0, 24.0),
+    ),
+    (
+        PlayerPart::ForearmLeft,
+        Vec3::new(0.0, -ARM_LENGTH, 0.0),
+        Vec3::new(-1.98, -ARM_LENGTH, -1.98),
+        Vec3::new(1.98, 1.0, 1.98),
+        Vec2::new(32.0, 53.0),
+        Vec2::new(32.0, 56.0),
     ),
     (
         PlayerPart::LegRight,
@@ -101,12 +283,14 @@ const PARTS: [(PlayerPart, Vec3, Vec3, Vec3, Vec2); 6] = [
         Vec3::new(-2.0, -12.0, -2.0),
         Vec3::new(2.0, 0.0, 2.0),
         Vec2::new(0.0, 16.0),
+        Vec2::new(0.0, 16.0),
     ),
     (
         PlayerPart::LegLeft,
         Vec3::new(-2.0, 12.0, 0.0),
         Vec3::new(-2.0, -12.0, -2.0),
         Vec3::new(2.0, 0.0, 2.0),
+        Vec2::new(16.0, 48.0),
         Vec2::new(16.0, 48.0),
     ),
 ];
@@ -128,14 +312,17 @@ fn spawn_model_parts(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     material: Handle<StandardMaterial>,
+    overlay: Handle<StandardMaterial>,
     root: Entity,
     layer: usize,
     clone: bool,
+    owner: Option<Entity>,
 ) {
-    for (kind, pivot, min, max, texture) in PARTS {
+    let mut ids = [Entity::PLACEHOLDER; 8];
+    for (kind, pivot, min, max, texture, cap) in PARTS {
         let mut entity = commands.spawn((
             kind,
-            Mesh3d(meshes.add(part_mesh(min, max, texture))),
+            Mesh3d(meshes.add(part_mesh(min, max, texture, cap))),
             MeshMaterial3d(material.clone()),
             Transform::from_translation(pivot),
             PartPivot(pivot),
@@ -143,9 +330,45 @@ fn spawn_model_parts(
         ));
         if clone {
             entity.insert(ClonePart);
+            if let Some(owner) = owner {
+                entity.insert(CloneOwner(owner));
+            }
+        } else {
+            entity.insert(PlayerLimb);
+            entity.insert(PlayerLayer);
         }
-        let entity = entity.id();
-        commands.entity(root).add_child(entity);
+        let id = entity.id();
+        ids[part_slot(kind)] = id;
+        if let Some((texture, cap)) = overlay_texture(kind) {
+            let mut overlay_entity = commands.spawn((
+                Mesh3d(meshes.add(part_mesh(
+                    min - Vec3::splat(0.5),
+                    max + Vec3::splat(0.5),
+                    texture,
+                    cap,
+                ))),
+                MeshMaterial3d(overlay.clone()),
+                Transform::IDENTITY,
+                NotShadowCaster,
+                RenderLayers::layer(layer),
+            ));
+            if !clone {
+                overlay_entity.insert(PlayerLayer);
+            }
+            let overlay_id = overlay_entity.id();
+            commands.entity(id).add_child(overlay_id);
+        }
+        if !matches!(kind, PlayerPart::ForearmLeft | PlayerPart::ForearmRight) {
+            commands.entity(root).add_child(id);
+        }
+    }
+    for (forearm, arm) in [
+        (SLOT_FOREARM_LEFT, SLOT_ARM_LEFT),
+        (SLOT_FOREARM_RIGHT, SLOT_ARM_RIGHT),
+    ] {
+        if ids[forearm] != Entity::PLACEHOLDER && ids[arm] != Entity::PLACEHOLDER {
+            commands.entity(ids[arm]).add_child(ids[forearm]);
+        }
     }
 }
 
@@ -156,6 +379,7 @@ pub fn spawn_player_model(
     asset_server: &AssetServer,
 ) -> Entity {
     let material = skin_material(materials, asset_server);
+    let overlay = overlay_material(materials, asset_server);
     let root = commands
         .spawn((
             PlayerModelRoot,
@@ -164,7 +388,16 @@ pub fn spawn_player_model(
         ))
         .id();
 
-    spawn_model_parts(commands, meshes, material.clone(), root, 2, false);
+    spawn_model_parts(
+        commands,
+        meshes,
+        material.clone(),
+        overlay,
+        root,
+        2,
+        false,
+        None,
+    );
 
     commands
         .spawn((
@@ -172,6 +405,7 @@ pub fn spawn_player_model(
             Mesh3d(meshes.add(part_mesh(
                 Vec3::new(-2.0, -12.0, -2.0),
                 Vec3::new(2.0, 0.0, 2.0),
+                Vec2::new(40.0, 16.0),
                 Vec2::new(40.0, 16.0),
             ))),
             MeshMaterial3d(material),
@@ -257,7 +491,17 @@ pub fn spawn_clone_players(
             .id();
         commands.entity(root).add_child(model);
         let material = skin_material(&mut materials, &asset_server);
-        spawn_model_parts(&mut commands, &mut meshes, material, model, 0, true);
+        let overlay = overlay_material(&mut materials, &asset_server);
+        spawn_model_parts(
+            &mut commands,
+            &mut meshes,
+            material,
+            overlay,
+            model,
+            0,
+            true,
+            Some(root),
+        );
         commands.spawn((
             NameTag(root),
             Node {
@@ -384,6 +628,7 @@ pub fn tick_clones(
 
 pub fn push_player_from_clones(
     world: Res<crate::world::VoxelWorld>,
+    contacts: Res<LimbContacts>,
     mut players: Query<&mut Player, With<Camera3d>>,
     mut clones: Query<(&mut PlayerClone, &Transform), Without<Player>>,
 ) {
@@ -392,6 +637,22 @@ pub fn push_player_from_clones(
     };
     for (mut clone, transform) in &mut clones {
         let clone_feet = transform.translation;
+        let clone_half = CLONE_WIDTH * 0.5;
+        let clone_min = clone_feet - Vec3::new(clone_half, 0.0, clone_half);
+        let clone_max = clone_feet + Vec3::new(clone_half, CLONE_HEIGHT, clone_half);
+        for slot in 2..8 {
+            let limb = contacts.boxes[slot];
+            if !limb.overlaps(clone_min, clone_max) {
+                continue;
+            }
+            let center = limb.center();
+            let dx = clone_feet.x - center.x;
+            let dz = clone_feet.z - center.z;
+            let sign_x = if dx.abs() < 1e-4 { 1.0 } else { dx.signum() };
+            let sign_z = if dz.abs() < 1e-4 { 1.0 } else { dz.signum() };
+            clone.velocity.x += sign_x * 0.25;
+            clone.velocity.z += sign_z * 0.25;
+        }
         let player_half = crate::player::PLAYER_WIDTH * 0.5;
         let clone_half = CLONE_WIDTH * 0.5;
         let reach = player_half + clone_half;
@@ -531,15 +792,22 @@ pub fn animate_first_person_arm(
 
 pub fn animate_player_model(
     time: Res<Time>,
-    _view: Res<ViewMode>,
+    view: Res<ViewMode>,
+    world: Res<crate::world::VoxelWorld>,
     player: Query<&Player, With<Camera3d>>,
     mut swing: Local<f32>,
     mut debug_frame: Local<u32>,
+    mut left_reach: Local<f32>,
+    mut right_reach: Local<f32>,
+    mut contacts: ResMut<LimbContacts>,
     mut root: Query<
         (&mut Transform, &mut Visibility),
         (With<PlayerModelRoot>, Without<PlayerPart>),
     >,
-    mut parts: Query<(&PlayerPart, &PartPivot, &mut Transform), Without<PlayerModelRoot>>,
+    mut parts: Query<
+        (&PlayerPart, &PartPivot, &mut Transform, Option<&PlayerLimb>),
+        (Without<PlayerModelRoot>, Without<ClonePart>),
+    >,
 ) {
     let Ok(player) = player.single() else {
         return;
@@ -599,7 +867,67 @@ pub fn animate_player_model(
     let bob = (*swing * 2.0).cos().abs() * 0.02 * amount;
     root_transform.translation.y += bob;
 
-    for (kind, pivot, mut transform) in &mut parts {
+    let feet = player.render_feet;
+    let interactive = view.mode != 0;
+    let arm_offset = Vec3::new(0.0, -3.2 * crouch, 0.0);
+    let right = Vec3::new(player.body_yaw.cos(), 0.0, -player.body_yaw.sin());
+    let mut ik_upper = [Quat::IDENTITY; 2];
+    let mut ik_fore = [Quat::IDENTITY; 2];
+    let mut ik_target = [0.0f32; 2];
+    if interactive {
+        for (index, sign) in [-1.0f32, 1.0].into_iter().enumerate() {
+            let side = right * sign;
+            let shoulder_pivot =
+                Vec3::new(if sign < 0.0 { -6.0 } else { 6.0 }, 22.0, 0.0) + arm_offset;
+            let shoulder = root_transform.transform_point(shoulder_pivot);
+            if let Some((point, weight)) =
+                hand_contact_target(&world, shoulder, feet, side, speed > 0.6)
+            {
+                let local_target =
+                    root_transform.rotation.inverse() * (point - root_transform.translation)
+                        / MODEL_SCALE;
+                let pole = Vec3::new(sign * 0.35, -0.85, 0.4);
+                if let Some((elbow, hand)) =
+                    solve_two_bone(shoulder_pivot, local_target, ARM_LENGTH, ARM_LENGTH, pole)
+                {
+                    let upper = aim_bone(
+                        (elbow - shoulder_pivot).normalize_or_zero(),
+                        Vec3::Z,
+                    );
+                    let lower = aim_bone((hand - elbow).normalize_or_zero(), Vec3::Z);
+                    ik_upper[index] = upper;
+                    ik_fore[index] = upper.inverse() * lower;
+                    ik_target[index] = weight;
+                }
+            }
+        }
+    }
+    let reach_blend = 1.0 - (-delta * 9.0).exp();
+    *left_reach += (ik_target[0] - *left_reach) * reach_blend;
+    *right_reach += (ik_target[1] - *right_reach) * reach_blend;
+    if std::env::var("ELOSIUM_ANIM_DEBUG").is_ok() && *debug_frame % 60 == 0 {
+        println!(
+            "limb ik=({:.2},{:.2}) feet={:?} yaw={:.2}",
+            *left_reach, *right_reach, feet, player.body_yaw
+        );
+    }
+    let root_tf = Transform {
+        translation: root_transform.translation,
+        rotation: root_transform.rotation,
+        scale: root_transform.scale,
+    };
+    let applied_upper = [
+        Quat::from_rotation_x(arm - 0.4 * crouch + idle + attack * 0.3)
+            .slerp(ik_upper[0], *left_reach),
+        Quat::from_rotation_x(-arm - 0.4 * crouch - idle + attack)
+            .slerp(ik_upper[1], *right_reach),
+    ];
+    let applied_fore = [
+        Quat::IDENTITY.slerp(ik_fore[0], *left_reach),
+        Quat::IDENTITY.slerp(ik_fore[1], *right_reach),
+    ];
+
+    for (kind, pivot, mut transform, limb) in &mut parts {
         let (rotation, offset) = match kind {
             PlayerPart::Head => (
                 Quat::from_rotation_y(relative) * Quat::from_rotation_x(head_pitch),
@@ -609,14 +937,10 @@ pub fn animate_player_model(
                 Quat::from_rotation_x(-0.5 * crouch - sprint * 0.08),
                 Vec3::new(0.0, -3.2 * crouch, 0.0),
             ),
-            PlayerPart::ArmLeft => (
-                Quat::from_rotation_x(arm - 0.4 * crouch + idle + attack * 0.3),
-                Vec3::new(0.0, -3.2 * crouch, 0.0),
-            ),
-            PlayerPart::ArmRight => (
-                Quat::from_rotation_x(-arm - 0.4 * crouch - idle + attack),
-                Vec3::new(0.0, -3.2 * crouch, 0.0),
-            ),
+            PlayerPart::ArmLeft => (applied_upper[0], arm_offset),
+            PlayerPart::ArmRight => (applied_upper[1], arm_offset),
+            PlayerPart::ForearmLeft => (applied_fore[0], Vec3::ZERO),
+            PlayerPart::ForearmRight => (applied_fore[1], Vec3::ZERO),
             PlayerPart::LegLeft => (
                 Quat::from_rotation_x(-leg),
                 Vec3::new(0.0, -0.2 * crouch, 4.0 * crouch),
@@ -627,16 +951,137 @@ pub fn animate_player_model(
             ),
         };
         transform.rotation = rotation;
-        transform.translation = pivot.0 + offset;
+        if matches!(kind, PlayerPart::ForearmLeft | PlayerPart::ForearmRight) {
+            transform.translation = Vec3::new(0.0, -ARM_LENGTH, 0.0);
+        } else {
+            transform.translation = pivot.0 + offset;
+        }
         transform.scale = Vec3::ONE;
+
+        if limb.is_some() {
+            let slot = part_slot(*kind);
+            let world_part = match kind {
+                PlayerPart::ForearmLeft | PlayerPart::ForearmRight => {
+                    let left = *kind == PlayerPart::ForearmLeft;
+                    let shoulder_pivot =
+                        Vec3::new(if left { -6.0 } else { 6.0 }, 22.0, 0.0) + arm_offset;
+                    let upper = applied_upper[if left { 0 } else { 1 }];
+                    let upper_world = root_tf.mul_transform(Transform {
+                        translation: shoulder_pivot,
+                        rotation: upper,
+                        scale: Vec3::ONE,
+                    });
+                    upper_world.mul_transform(Transform {
+                        translation: Vec3::new(0.0, -ARM_LENGTH, 0.0),
+                        rotation,
+                        scale: Vec3::ONE,
+                    })
+                }
+                _ => root_tf.mul_transform(Transform {
+                    translation: pivot.0 + offset,
+                    rotation,
+                    scale: Vec3::ONE,
+                }),
+            };
+            let (min, max) = part_bounds(*kind);
+            let mut bmin = Vec3::splat(f32::MAX);
+            let mut bmax = Vec3::splat(f32::MIN);
+            for corner in 0..8u8 {
+                let point = world_part.transform_point(Vec3::new(
+                    if corner & 1 == 0 { min.x } else { max.x },
+                    if corner & 2 == 0 { min.y } else { max.y },
+                    if corner & 4 == 0 { min.z } else { max.z },
+                ));
+                bmin = bmin.min(point);
+                bmax = bmax.max(point);
+            }
+            contacts.boxes[slot] = LimbBox { min: bmin, max: bmax };
+            match kind {
+                PlayerPart::ForearmLeft => {
+                    contacts.hands[0] =
+                        world_part.transform_point(Vec3::new(0.0, -ARM_LENGTH, 0.0));
+                }
+                PlayerPart::ForearmRight => {
+                    contacts.hands[1] =
+                        world_part.transform_point(Vec3::new(0.0, -ARM_LENGTH, 0.0));
+                }
+                PlayerPart::LegLeft => {
+                    contacts.feet[0] = world_part.transform_point(Vec3::new(0.0, -12.0, 0.0));
+                }
+                PlayerPart::LegRight => {
+                    contacts.feet[1] = world_part.transform_point(Vec3::new(0.0, -12.0, 0.0));
+                }
+                _ => {}
+            }
+        }
     }
 }
 
-fn part_mesh(min: Vec3, max: Vec3, texture: Vec2) -> Mesh {
+pub fn animate_clone_models(
+    time: Res<Time>,
+    mut phases: Local<HashMap<Entity, f32>>,
+    clones: Query<(Entity, &PlayerClone)>,
+    mut parts: Query<(&CloneOwner, &PlayerPart, &mut Transform), With<ClonePart>>,
+) {
+    if parts.is_empty() {
+        return;
+    }
+    let mut states: HashMap<Entity, (f32, f32)> = HashMap::new();
+    let delta = time.delta_secs().min(0.05);
+    for (entity, clone) in &clones {
+        let speed = Vec2::new(clone.velocity.x, clone.velocity.z).length();
+        let phase = phases.entry(entity).or_insert(0.0);
+        *phase += speed * delta * 1.9;
+        states.insert(entity, (*phase, (speed / 4.3).clamp(0.0, 1.0)));
+    }
+    for (owner, kind, mut transform) in &mut parts {
+        let Some(&(phase, amount)) = states.get(&owner.0) else {
+            continue;
+        };
+        let swing = phase.cos() * 1.4 * amount;
+        transform.rotation = match kind {
+            PlayerPart::ArmLeft => Quat::from_rotation_x(swing * 0.9),
+            PlayerPart::ArmRight => Quat::from_rotation_x(-swing * 0.9),
+            PlayerPart::LegLeft => Quat::from_rotation_x(-swing),
+            PlayerPart::LegRight => Quat::from_rotation_x(swing),
+            _ => Quat::IDENTITY,
+        };
+    }
+}
+
+fn overlay_texture(part: PlayerPart) -> Option<(Vec2, Vec2)> {
+    match part {
+        PlayerPart::Head => Some((Vec2::new(32.0, 0.0), Vec2::new(32.0, 0.0))),
+        PlayerPart::Body => Some((Vec2::new(16.0, 32.0), Vec2::new(16.0, 32.0))),
+        PlayerPart::ArmRight => Some((Vec2::new(40.0, 32.0), Vec2::new(40.0, 32.0))),
+        PlayerPart::ArmLeft => Some((Vec2::new(48.0, 32.0), Vec2::new(48.0, 32.0))),
+        PlayerPart::ForearmRight => Some((Vec2::new(40.0, 38.0), Vec2::new(40.0, 32.0))),
+        PlayerPart::ForearmLeft => Some((Vec2::new(48.0, 38.0), Vec2::new(48.0, 32.0))),
+        PlayerPart::LegRight => Some((Vec2::new(0.0, 32.0), Vec2::new(0.0, 32.0))),
+        PlayerPart::LegLeft => Some((Vec2::new(16.0, 32.0), Vec2::new(16.0, 32.0))),
+    }
+}
+
+fn overlay_material(
+    materials: &mut Assets<StandardMaterial>,
+    asset_server: &AssetServer,
+) -> Handle<StandardMaterial> {
+    materials.add(StandardMaterial {
+        base_color_texture: Some(asset_server.load("textures/player_skin.png")),
+        perceptual_roughness: 1.0,
+        metallic: 0.0,
+        cull_mode: None,
+        alpha_mode: AlphaMode::Blend,
+        ..default()
+    })
+}
+
+fn part_mesh(min: Vec3, max: Vec3, texture: Vec2, cap: Vec2) -> Mesh {
     let width = max.x - min.x;
     let height = max.y - min.y;
     let depth = max.z - min.z;
     let (u, v) = (texture.x, texture.y);
+    let (cap_u, cap_v) = (cap.x, cap.y);
 
     let mut positions: Vec<[f32; 3]> = Vec::new();
     let mut normals: Vec<[f32; 3]> = Vec::new();
@@ -720,7 +1165,7 @@ fn part_mesh(min: Vec3, max: Vec3, texture: Vec2) -> Mesh {
         &mut indices,
         top,
         [0.0, 1.0, 0.0],
-        [u + depth, v, width, depth],
+        [cap_u + depth, cap_v, width, depth],
     );
 
     let bottom = [
@@ -736,7 +1181,7 @@ fn part_mesh(min: Vec3, max: Vec3, texture: Vec2) -> Mesh {
         &mut indices,
         bottom,
         [0.0, -1.0, 0.0],
-        [u + depth + width, v, width, depth],
+        [cap_u + depth + width, cap_v, width, depth],
     );
 
     let mut mesh = Mesh::new(

@@ -392,6 +392,7 @@ fn spawn_sprint_dust(
     time: Res<Time>,
     menu: Res<MenuState>,
     world: Res<VoxelWorld>,
+    contacts: Res<crate::player_model::LimbContacts>,
     players: Query<&Player, With<Camera3d>>,
     mut timer: ResMut<DustTimer>,
     mut commands: Commands,
@@ -416,10 +417,18 @@ fn spawn_sprint_dust(
     }
     timer.0 = 0.085;
     let feet = player.render_feet;
+    let (left, right) = (contacts.feet[0], contacts.feet[1]);
+    let foot = if left.y <= right.y { left } else { right };
+    let has_contact = left != Vec3::ZERO || right != Vec3::ZERO;
+    let mut contact = feet;
+    if has_contact && (foot.x - feet.x).abs() < 1.0 && (foot.z - feet.z).abs() < 1.0 {
+        contact.x = foot.x;
+        contact.z = foot.z;
+    }
     let ground = world.get_block(
-        feet.x.floor() as i32,
+        contact.x.floor() as i32,
         (feet.y - 0.2).floor() as i32,
-        feet.z.floor() as i32,
+        contact.z.floor() as i32,
     );
     if !ground.is_solid() || ground.is_water() {
         return;
@@ -431,9 +440,9 @@ fn spawn_sprint_dust(
     };
     let handle = debris_mesh(&mut meshes, &mut cache, ground, tint);
     let direction = Vec3::new(-player.velocity.x, 0.0, -player.velocity.z).normalize_or_zero();
-    *seed ^= (feet.x * 31.0 + feet.z * 17.0) as u32;
+    *seed ^= (contact.x * 31.0 + contact.z * 17.0) as u32;
     for _ in 0..2 {
-        let pos = feet
+        let pos = contact
             + Vec3::new(
                 next_rand(&mut seed) - 0.5,
                 0.08,

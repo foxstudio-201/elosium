@@ -58,7 +58,7 @@ use player::{
     update_head_aim, Player, PlayerPose, SpawnPoint, ViewMode, EYE_HEIGHT,
 };
 use player_model::{
-    animate_first_person_arm, animate_player_model, clear_clones_off_world,
+    animate_clone_models, animate_first_person_arm, animate_player_model, clear_clones_off_world,
     push_player_from_clones, spawn_clone_players, spawn_held_block, spawn_player_model,
     tick_clones, update_held_block, update_name_tags, SpawnClone,
 };use reflection::{create_image, spawn_camera, sync_reflection, ReflectionCamera};
@@ -111,6 +111,7 @@ fn main() {
     .insert_resource(BreakTimer::default())
     .insert_resource(debug::FpsCounter::default())
     .insert_resource(DebugBoxes::default())
+    .init_resource::<player_model::LimbContacts>()
     .insert_resource(debug::HudVisible(
         std::env::var("ELOSIUM_HUD_OFF").is_err()
             && std::env::var("ELOSIUM_BAKE_PANORAMA").is_err(),
@@ -180,6 +181,7 @@ fn main() {
                 (
                     update_occluders.run_if(frontend::streaming_active),
                     animate_player_model,
+                    animate_clone_models,
                     update_player_layers,
                     animate_first_person_arm,
                     update_held_block,
@@ -532,13 +534,7 @@ fn setup(
 
 fn update_player_layers(
     view: Res<ViewMode>,
-    mut parts: Query<
-        &mut RenderLayers,
-        (
-            With<player_model::PlayerPart>,
-            Without<player_model::ClonePart>,
-        ),
-    >,
+    mut parts: Query<&mut RenderLayers, With<player_model::PlayerLayer>>,
 ) {
     let layer = if view.mode == 0 { 2 } else { 0 };
     for mut layers in &mut parts {
