@@ -6,6 +6,7 @@ use bevy::{
 
 use crate::{
     chat::ChatState,
+    hud::Vitals,
     menu::{
         bound_key, MenuState, Settings, ACTION_BACK, ACTION_FORWARD, ACTION_JUMP, ACTION_LEFT,
         ACTION_RIGHT, ACTION_SNEAK, ACTION_SPRINT,
@@ -98,6 +99,7 @@ pub struct Player {
     pub eye_height_current: f32,
     pub eye_height_prev: f32,
     pub render_feet: Vec3,
+    pub fall_distance: f32,
 }
 
 impl Player {
@@ -375,6 +377,8 @@ pub fn player_controller(
     world: Res<VoxelWorld>,
     spawn: Res<SpawnPoint>,
     window: Single<&Window>,
+    rules: Res<crate::frontend::GameRules>,
+    mut vitals: ResMut<crate::hud::Vitals>,
     mut query: Query<&mut Player, With<Camera3d>>,
 ) {
     let Ok(mut player) = query.single_mut() else {
@@ -456,7 +460,14 @@ pub fn player_controller(
     while player.tick_accumulator >= TICK_SECONDS {
         player.tick_accumulator -= TICK_SECONDS;
         player.prev_feet = player.feet;
-        simulate_tick(&mut player, &world, &input, spawn.0);
+        simulate_tick(
+            &mut player,
+            &world,
+            &input,
+            spawn.0,
+            rules.gamemode,
+            &mut vitals,
+        );
     }
 
     let alpha = (player.tick_accumulator / TICK_SECONDS).clamp(0.0, 1.0);
@@ -466,9 +477,17 @@ pub fn player_controller(
     player.body = feet + Vec3::Y * eye;
 }
 
-fn simulate_tick(player: &mut Player, world: &VoxelWorld, input: &MoveInput, spawn: Vec3) {
+fn simulate_tick(
+    player: &mut Player,
+    world: &VoxelWorld,
+    input: &MoveInput,
+    spawn: Vec3,
+    gamemode: u8,
+    vitals: &mut Vitals,
+) {
     let mut feet = player.feet;
     let start = feet;
+    let was_on_ground = player.on_ground;
     let mut velocity = player.velocity;
 
     if player.no_jump_delay > 0 {
@@ -528,14 +547,21 @@ fn simulate_tick(player: &mut Player, world: &VoxelWorld, input: &MoveInput, spa
     }
     player.prev_forward = input.forward;
 
+    let can_fly = gamemode == 1 || gamemode == 3;
+    if !can_fly {
+        player.flying = false;
+    }
     let fresh_jump = input.jump && !player.prev_jump;
-    if fresh_jump && !player.swimming {
+    if fresh_jump && !player.swimming && can_fly {
         if player.jump_trigger_time == 0 {
             player.jump_trigger_time = 7;
         } else {
             player.flying = !player.flying;
             player.jump_trigger_time = 0;
         }
+    }
+    if gamemode == 3 {
+        player.flying = true;
     }
     player.prev_jump = input.jump;
 
@@ -618,25 +644,34 @@ fn simulate_tick(player: &mut Player, world: &VoxelWorld, input: &MoveInput, spa
         };
         velocity += input_dir * speed;
         let delta = velocity;
-        let (result, moved) = move_entity(world, &mut feet, delta, player.pose);
-        if moved.x != delta.x {
-            velocity.x = 0.0;
-        }
-        if moved.z != delta.z {
-            velocity.z = 0.0;
-        }
-        let keep = if player.on_ground {
-            BLOCK_FRICTION * 0.91
+        if gamemode == 3 {
+            feet += delta;
+            velocity.x *= 0.91;
+            velocity.z *= 0.91;
+            velocity.y = saved_y * 0.6;
+            player.on_ground = false;
+            player.horizontal_collision = false;
         } else {
-            0.91
-        };
-        velocity.x *= keep;
-        velocity.z *= keep;
-        velocity.y = saved_y * 0.6;
-        player.on_ground = result.on_ground;
-        player.horizontal_collision = result.horizontal_collision;
-        if player.on_ground {
-            player.flying = false;
+            let (result, moved) = move_entity(world, &mut feet, delta, player.pose);
+            if moved.x != delta.x {
+                velocity.x = 0.0;
+            }
+            if moved.z != delta.z {
+                velocity.z = 0.0;
+            }
+            let keep = if player.on_ground {
+                BLOCK_FRICTION * 0.91
+            } else {
+                0.91
+            };
+            velocity.x *= keep;
+            velocity.z *= keep;
+            velocity.y = saved_y * 0.6;
+            player.on_ground = result.on_ground;
+            player.horizontal_collision = result.horizontal_collision;
+            if player.on_ground {
+                player.flying = false;
+            }
         }
     } else if water.in_water {
         let drag = if player.sprinting {
@@ -723,6 +758,38 @@ fn simulate_tick(player: &mut Player, world: &VoxelWorld, input: &MoveInput, spa
     player.tick_speed = Vec2::new(moved.x, moved.z).length();
     player.feet = feet;
     player.velocity = velocity;
+
+    if gamemode == 0 {
+        if fluid.in_water {
+            player.fall_distance = 0.0;
+        } else if player.on_ground {
+            if !was_on_ground && player.fall_distance > 3.0 {
+                let damage = (player.fall_distance - 3.0).ceil();
+                vitals.health = (vitals.health - damage).max(0.0);
+            }
+            player.fall_distance = 0.0;
+        } else if !player.flying && player.velocity.y < 0.0 {
+            player.fall_distance += (start.y - feet.y).max(0.0);
+        }
+        if vitals.health <= 0.0 {
+            player.feet = spawn;
+            player.prev_feet = spawn;
+            player.render_feet = spawn;
+            player.velocity = Vec3::ZERO;
+            player.on_ground = false;
+            player.pose = PlayerPose::Standing;
+            player.tick_speed = 0.0;
+            player.flying = false;
+            player.fall_distance = 0.0;
+            player.jump_trigger_time = 0;
+            player.prev_jump = false;
+            player.eye_height_current = EYE_HEIGHT;
+            player.eye_height_prev = EYE_HEIGHT;
+            vitals.health = 20.0;
+        }
+    } else {
+        player.fall_distance = 0.0;
+    }
 
     if feet.y < MIN_Y as f32 + 1.0 {
         player.feet = spawn;

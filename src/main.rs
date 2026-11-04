@@ -455,6 +455,7 @@ fn setup(
             prev_forward: 0.0,
             tick_speed: 0.0,
             flying: std::env::var("ELOSIUM_FLY").is_ok(),
+            fall_distance: 0.0,
             jump_trigger_time: 0,
             prev_jump: false,
             eye_height_current: EYE_HEIGHT,
