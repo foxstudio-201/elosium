@@ -401,7 +401,7 @@ impl Plugin for MenuPlugin {
     }
 }
 
-pub fn spawn_menu(commands: &mut Commands, asset_server: &AssetServer) {
+pub fn spawn_menu(commands: &mut Commands, asset_server: &AssetServer, theme: &crate::ui_theme::UiAssets) {
     let font: Handle<Font> = asset_server.load("fonts/mono.ttf");
     commands
         .spawn((
@@ -432,7 +432,7 @@ pub fn spawn_menu(commands: &mut Commands, asset_server: &AssetServer) {
                     border_radius: BorderRadius::all(px(16)),
                     ..default()
                 },
-                BackgroundColor(PANEL_BG),
+                crate::ui_theme::sliced(theme.panel_ornate.clone(), 20.0),
                 UiTransform::default(),
             ))
             .with_children(|panel| {

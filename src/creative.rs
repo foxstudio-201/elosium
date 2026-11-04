@@ -71,7 +71,11 @@ impl Plugin for CreativePlugin {
     }
 }
 
-fn spawn_creative(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn spawn_creative(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    theme: Res<crate::ui_theme::UiAssets>,
+) {
     let font: Handle<Font> = asset_server.load("fonts/mono.ttf");
     let muted = Color::srgba(0.72, 0.78, 0.88, 0.75);
 
@@ -104,8 +108,7 @@ fn spawn_creative(mut commands: Commands, asset_server: Res<AssetServer>) {
                     border_radius: BorderRadius::all(px(12.0)),
                     ..default()
                 },
-                BackgroundColor(PANEL_BG),
-                BorderColor::all(PANEL_BORDER),
+                crate::ui_theme::sliced(theme.panel_plain.clone(), 14.0),
             ))
             .with_children(|panel| {
                 panel
@@ -183,6 +186,7 @@ fn spawn_creative(mut commands: Commands, asset_server: Res<AssetServer>) {
                             grid.spawn((
                                 CreativeSlot(index),
                                 Button,
+                                crate::ui_theme::ThemeSkip,
                                 Node {
                                     width: px(48.0),
                                     height: px(48.0),
@@ -190,7 +194,7 @@ fn spawn_creative(mut commands: Commands, asset_server: Res<AssetServer>) {
                                     border_radius: BorderRadius::all(px(4.0)),
                                     ..default()
                                 },
-                                BackgroundColor(SLOT_BG),
+                                crate::ui_theme::sliced(theme.slot_empty.clone(), 14.0),
                                 BorderColor::all(SLOT_BORDER),
                             ))
                             .with_children(|slot| {

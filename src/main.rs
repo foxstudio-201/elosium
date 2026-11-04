@@ -22,6 +22,7 @@ mod reflection;
 mod storage;
 mod streaming;
 mod terrain;
+mod ui_theme;
 mod vanilla_worldgen;
 mod water;
 mod water_fx;
@@ -151,6 +152,7 @@ fn main() {
     })
     .add_message::<SpawnClone>()
     .add_plugins(menu::MenuPlugin)
+    .add_plugins(ui_theme::UiThemePlugin)
     .add_plugins(chat::ChatPlugin)
     .add_plugins(water_fx::WaterFxPlugin)
     .add_plugins(hud::HudPlugin)
@@ -231,6 +233,7 @@ fn main() {
 
 fn setup(
     mut commands: Commands,
+    theme: Res<ui_theme::UiAssets>,
     render: Res<RenderSettings>,
     mut view: ResMut<ViewMode>,
     asset_server: Res<AssetServer>,
@@ -261,7 +264,7 @@ fn setup(
     spawn_debug_overlay(&mut commands, &asset_server);
     spawn_debug_boxes(&mut commands, &mut meshes, &mut standard_materials);
     spawn_block_outline(&mut commands, &mut meshes, &mut standard_materials);
-    menu::spawn_menu(&mut commands, &asset_server);
+    menu::spawn_menu(&mut commands, &asset_server, &theme);
     let arm_entity = spawn_player_model(
         &mut commands,
         &mut meshes,

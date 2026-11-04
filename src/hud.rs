@@ -18,6 +18,7 @@ use crate::{
     particles::BlockDrop,
     player::Player,
     reflection::ReflectionCamera,
+    ui_theme::{sliced, stretched, UiAssets},
 };
 
 pub const HOTBAR_SLOTS: usize = 9;
@@ -224,12 +225,6 @@ impl BarKind {
     }
 }
 
-const TRACK_BG: Color = Color::srgba(0.04, 0.05, 0.07, 0.55);
-const TRACK_BORDER: Color = Color::srgba(1.0, 1.0, 1.0, 0.10);
-const SLOT_BG: Color = Color::srgba(1.0, 1.0, 1.0, 0.05);
-const SLOT_BORDER: Color = Color::srgba(1.0, 1.0, 1.0, 0.13);
-const SLOT_SELECTED_BG: Color = Color::srgba(1.0, 1.0, 1.0, 0.12);
-const SLOT_SELECTED_BORDER: Color = Color::srgb(0.95, 0.97, 1.0);
 
 pub struct HudPlugin;
 
@@ -293,8 +288,20 @@ fn pixel_icon(images: &mut Assets<Image>, rows: [&str; 9], color: Color) -> Hand
     images.add(image)
 }
 
+fn bar_tint(kind: BarKind) -> Color {
+    match kind {
+        BarKind::Armor => Color::srgb(0.85, 0.9, 1.0),
+        BarKind::Mana => Color::srgb(0.75, 0.9, 1.0),
+        BarKind::Stamina => Color::srgb(0.6, 1.0, 0.7),
+        BarKind::Thirst => Color::srgb(0.7, 1.0, 1.0),
+        BarKind::Xp => Color::srgb(0.7, 1.0, 0.55),
+        BarKind::Health | BarKind::Hunger => Color::WHITE,
+    }
+}
+
 fn spawn_bar(
     parent: &mut ChildSpawnerCommands,
+    theme: &UiAssets,
     kind: BarKind,
     icon: Handle<Image>,
     icon_outer_right: bool,
@@ -327,33 +334,52 @@ fn spawn_bar(
                 },
             ));
             bar.spawn((
+                sliced(theme.bar_frame.clone(), 10.0),
                 Node {
                     flex_grow: 1.0,
-                    height: px(9.0),
-                    border: UiRect::all(px(1.0)),
-                    border_radius: BorderRadius::all(px(3.0)),
-                    overflow: Overflow::clip(),
+                    height: px(18.0),
+                    padding: UiRect::all(px(4.0)),
                     ..default()
                 },
-                BackgroundColor(TRACK_BG),
-                BorderColor::all(TRACK_BORDER),
             ))
             .with_children(|track| {
+                let (fill, tint) = match kind {
+                    BarKind::Health => (theme.bar_fill_hp.clone(), Color::WHITE),
+                    BarKind::Hunger => (theme.bar_fill_hp.clone(), Color::srgb(1.0, 0.82, 0.6)),
+                    _ => (theme.bar_fill_mp.clone(), bar_tint(kind)),
+                };
                 track.spawn((
                     BarFill(kind),
+                    ImageNode {
+                        color: tint,
+                        ..sliced(fill, 4.0)
+                    },
                     Node {
                         width: percent(100.0),
                         height: percent(100.0),
-                        border_radius: BorderRadius::all(px(2.0)),
                         ..default()
                     },
-                    BackgroundColor(kind.color()),
+                ));
+                track.spawn((
+                    ImageNode {
+                        color: Color::srgba(1.0, 1.0, 1.0, 0.28),
+                        ..stretched(theme.bar_segments.clone())
+                    },
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: px(4.0),
+                        right: px(4.0),
+                        top: px(4.0),
+                        bottom: px(4.0),
+                        ..default()
+                    },
                 ));
             });
         });
 }
 
 fn spawn_hud(
+    theme: Res<UiAssets>,
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
     mut layouts: ResMut<Assets<TextureAtlasLayout>>,
@@ -475,17 +501,14 @@ fn spawn_hud(
     commands
         .spawn((
             ItemLabel,
+            sliced(theme.tooltip.clone(), 10.0),
             Node {
                 position_type: PositionType::Absolute,
                 left: px(-200.0),
                 top: px(-200.0),
-                padding: UiRect::axes(px(6.0), px(3.0)),
-                border: UiRect::all(px(1.0)),
-                border_radius: BorderRadius::all(px(4.0)),
+                padding: UiRect::axes(px(8.0), px(5.0)),
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.02, 0.03, 0.05, 0.72)),
-            BorderColor::all(Color::srgba(1.0, 1.0, 1.0, 0.14)),
             Visibility::Hidden,
             GlobalZIndex(21),
         ))
@@ -528,9 +551,9 @@ fn spawn_hud(
                 ..default()
             })
             .with_children(|column| {
-                spawn_bar(column, BarKind::Mana, mana.clone(), false);
-                spawn_bar(column, BarKind::Armor, armor.clone(), false);
-                spawn_bar(column, BarKind::Health, heart.clone(), false);
+                spawn_bar(column, &theme, BarKind::Mana, mana.clone(), false);
+                spawn_bar(column, &theme, BarKind::Armor, armor.clone(), false);
+                spawn_bar(column, &theme, BarKind::Health, heart.clone(), false);
             });
 
             root.spawn(Node {
@@ -552,42 +575,53 @@ fn spawn_hud(
                 ));
                 center
                     .spawn((
+                        sliced(theme.bar_frame.clone(), 10.0),
                         Node {
                             width: px(364.0),
-                            height: px(7.0),
-                            border: UiRect::all(px(1.0)),
-                            border_radius: BorderRadius::all(px(3.0)),
+                            height: px(16.0),
+                            padding: UiRect::all(px(4.0)),
                             ..default()
                         },
-                        BackgroundColor(TRACK_BG),
-                        BorderColor::all(TRACK_BORDER),
                     ))
                     .with_children(|track| {
                         track.spawn((
                             BarFill(BarKind::Xp),
+                            ImageNode {
+                                color: bar_tint(BarKind::Xp),
+                                ..sliced(theme.bar_fill_mp.clone(), 4.0)
+                            },
                             Node {
                                 width: percent(0.0),
                                 height: percent(100.0),
-                                border_radius: BorderRadius::all(px(2.0)),
                                 ..default()
                             },
-                            BackgroundColor(BarKind::Xp.color()),
+                        ));
+                        track.spawn((
+                            ImageNode {
+                                color: Color::srgba(1.0, 1.0, 1.0, 0.28),
+                                ..stretched(theme.bar_segments.clone())
+                            },
+                            Node {
+                                position_type: PositionType::Absolute,
+                                left: px(4.0),
+                                right: px(4.0),
+                                top: px(4.0),
+                                bottom: px(4.0),
+                                ..default()
+                            },
                         ));
                     });
 
                 center
                     .spawn((
+                        sliced(theme.panel_inset.clone(), 12.0),
                         Node {
                             display: Display::Flex,
                             flex_direction: FlexDirection::Row,
                             column_gap: px(2.0),
-                            padding: UiRect::all(px(3.0)),
-                            border: UiRect::all(px(1.0)),
-                            border_radius: BorderRadius::all(px(6.0)),
+                            padding: UiRect::all(px(6.0)),
                             ..default()
                         },
-                        BackgroundColor(Color::srgba(0.03, 0.04, 0.06, 0.60)),
-                        BorderColor::all(Color::srgba(1.0, 1.0, 1.0, 0.08)),
                     ))
                     .with_children(|hotbar| {
                         for index in 0..HOTBAR_SLOTS {
@@ -595,19 +629,19 @@ fn spawn_hud(
                             hotbar
                                 .spawn((
                                     SlotButton(index),
+                                    sliced(
+                                        if selected {
+                                            theme.slot_selected.clone()
+                                        } else {
+                                            theme.slot_empty.clone()
+                                        },
+                                        14.0,
+                                    ),
                                     Node {
-                                        width: px(38.0),
-                                        height: px(38.0),
-                                        border: UiRect::all(px(1.0)),
-                                        border_radius: BorderRadius::all(px(4.0)),
+                                        width: px(44.0),
+                                        height: px(44.0),
                                         ..default()
                                     },
-                                    BackgroundColor(if selected { SLOT_SELECTED_BG } else { SLOT_BG }),
-                                    BorderColor::all(if selected {
-                                        SLOT_SELECTED_BORDER
-                                    } else {
-                                        SLOT_BORDER
-                                    }),
                                 ))
                                 .with_children(|slot| {
                                     slot.spawn((
@@ -615,8 +649,8 @@ fn spawn_hud(
                                         ImageNode::default(),
                                         Node {
                                             position_type: PositionType::Absolute,
-                                            left: px(4.0),
-                                            top: px(4.0),
+                                            left: px(8.0),
+                                            top: px(8.0),
                                             width: px(28.0),
                                             height: px(28.0),
                                             ..default()
@@ -635,9 +669,9 @@ fn spawn_hud(
                 ..default()
             })
             .with_children(|column| {
-                spawn_bar(column, BarKind::Thirst, thirst.clone(), true);
-                spawn_bar(column, BarKind::Hunger, hunger.clone(), true);
-                spawn_bar(column, BarKind::Stamina, stamina.clone(), true);
+                spawn_bar(column, &theme, BarKind::Thirst, thirst.clone(), true);
+                spawn_bar(column, &theme, BarKind::Hunger, hunger.clone(), true);
+                spawn_bar(column, &theme, BarKind::Stamina, stamina.clone(), true);
             });
         });
 }
@@ -702,22 +736,17 @@ fn sync_hud_visibility(
 
 fn update_hotbar_selection(
     inventory: Res<Inventory>,
-    mut slots: Query<(&SlotButton, &mut BorderColor, &mut BackgroundColor)>,
+    theme: Res<UiAssets>,
+    mut slots: Query<(&SlotButton, &mut ImageNode)>,
 ) {
     if !inventory.is_changed() {
         return;
     }
-    for (slot, mut border, mut background) in &mut slots {
-        let selected = slot.0 == inventory.selected;
-        *border = BorderColor::all(if selected {
-            SLOT_SELECTED_BORDER
+    for (slot, mut image) in &mut slots {
+        image.image = if slot.0 == inventory.selected {
+            theme.slot_selected.clone()
         } else {
-            SLOT_BORDER
-        });
-        background.0 = if selected {
-            SLOT_SELECTED_BG
-        } else {
-            SLOT_BG
+            theme.slot_empty.clone()
         };
     }
 }

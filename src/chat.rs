@@ -67,7 +67,11 @@ impl Plugin for ChatPlugin {
     }
 }
 
-fn spawn_chat_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn spawn_chat_ui(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    theme: Res<crate::ui_theme::UiAssets>,
+) {
     let font: Handle<Font> = asset_server.load("fonts/mono.ttf");
     if std::env::var("ELOSIUM_CHAT_TEST").is_ok() {
         let mut state = ChatState::default();
@@ -132,7 +136,7 @@ fn spawn_chat_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                     border_radius: BorderRadius::all(px(5)),
                     ..default()
                 },
-                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.65)),
+                crate::ui_theme::sliced(theme.panel_inset.clone(), 10.0),
                 Visibility::Hidden,
             ))
             .with_children(|line| {

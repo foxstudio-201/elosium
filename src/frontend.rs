@@ -27,6 +27,7 @@ use bevy::{
 
 use crate::{
     daynight::DayCycle,
+    ui_theme::{sliced, ThemeSkip, UiAssets},
     debug::HudVisible,
     menu::MenuState,
     player::{Player, PlayerPose, SpawnPoint, EYE_HEIGHT},
@@ -354,6 +355,7 @@ impl Plugin for FrontendPlugin {
 pub fn spawn_screens(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
+    theme: Res<UiAssets>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
@@ -629,7 +631,7 @@ pub fn spawn_screens(
                     border_radius: BorderRadius::all(px(16)),
                     ..default()
                 },
-                BackgroundColor(PANEL_BG),
+                sliced(theme.panel_ornate.clone(), 20.0),
             ))
             .with_children(|panel| {
                 panel.spawn(text(&font, "Tạo thế giới mới", 24.0, WHITE));
@@ -655,6 +657,7 @@ pub fn spawn_screens(
                             node.width = px(0);
                             row.spawn((
                                 Button,
+                                ThemeSkip,
                                 FrontAction(Action::Gamemode(index as u8)),
                                 GamemodeButton(index as u8),
                                 node,
@@ -737,7 +740,7 @@ pub fn spawn_screens(
                     border_radius: BorderRadius::all(px(14)),
                     ..default()
                 },
-                BackgroundColor(PANEL_BG),
+                sliced(theme.panel_plain.clone(), 14.0),
             ))
             .with_children(|panel| {
                 panel.spawn((
@@ -1366,6 +1369,7 @@ fn rebuild_world_list(
     mut worlds: ResMut<WorldsUi>,
     grid: Query<Entity, With<WorldsGrid>>,
     assets: Res<FrontAssets>,
+    theme: Res<UiAssets>,
     mut images: ResMut<Assets<Image>>,
     mut icons: ResMut<FrontIcons>,
 ) {
@@ -1419,7 +1423,7 @@ fn rebuild_world_list(
                         overflow: Overflow::clip(),
                         ..default()
                     },
-                    BackgroundColor(PANEL_BG),
+                    sliced(theme.panel_plain.clone(), 12.0),
                 ))
                 .with_children(|card| {
                     if let Some(icon) = icon {
