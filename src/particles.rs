@@ -10,9 +10,14 @@ use bevy::{
 
 use crate::{
     blocks::Block,
-    materials::GameMaterials,
+    frontend::GameRules,
+    hud::Inventory,
+    materials::{BlockMaterial, GameMaterials},
     menu::MenuState,
-    pack_atlas::{BLOCK_ATLAS_SIZE, BLOCK_UV_RECTS, TEX_GRASS_BLOCK_SIDE_OVERLAY},
+    pack_atlas::{
+        BLOCK_ATLAS_SIZE, BLOCK_UV_RECTS, FLORA_ATLAS_SIZE, FLORA_UV_RECTS, LEAF_ATLAS_SIZE,
+        LEAF_UV_RECTS,
+    },
     player::Player,
     world::VoxelWorld,
 };
@@ -43,9 +48,9 @@ pub struct Debris {
 
 #[derive(Component)]
 pub struct BlockDrop {
+    block: Block,
     velocity: Vec3,
     half: f32,
-    spin: Vec3,
     age: f32,
     life: f32,
     grounded: bool,
@@ -94,16 +99,50 @@ fn next_rand(state: &mut u32) -> f32 {
     ((*state >> 8) & 0xFFFF) as f32 / 65_535.0
 }
 
-fn tile_uv(tile: u8) -> [f32; 4] {
-    let rect = BLOCK_UV_RECTS[(tile as usize).min(BLOCK_UV_RECTS.len() - 1)];
-    let inset_u = 0.25 / BLOCK_ATLAS_SIZE[0] as f32;
-    let inset_v = 0.25 / BLOCK_ATLAS_SIZE[1] as f32;
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum AtlasKind {
+    Block,
+    Flora,
+    Leaves,
+}
+
+pub fn block_atlas_kind(block: Block) -> AtlasKind {
+    if block.is_plant() {
+        AtlasKind::Flora
+    } else if block.is_leaves() {
+        AtlasKind::Leaves
+    } else {
+        AtlasKind::Block
+    }
+}
+
+fn atlas_uv(kind: AtlasKind, tile: u8) -> [f32; 4] {
+    let (rects, size): (&[[f32; 4]], [u32; 2]) = match kind {
+        AtlasKind::Block => (&BLOCK_UV_RECTS, BLOCK_ATLAS_SIZE),
+        AtlasKind::Flora => (&FLORA_UV_RECTS, FLORA_ATLAS_SIZE),
+        AtlasKind::Leaves => (&LEAF_UV_RECTS, LEAF_ATLAS_SIZE),
+    };
+    let rect = rects[(tile as usize).min(rects.len() - 1)];
+    let inset_u = 0.25 / size[0] as f32;
+    let inset_v = 0.25 / size[1] as f32;
     [
         rect[0] + inset_u,
         rect[1] + inset_v,
         rect[2] - inset_u,
         rect[3] - inset_v,
     ]
+}
+
+pub fn block_particle_material(materials: &GameMaterials, block: Block) -> Handle<BlockMaterial> {
+    match block_atlas_kind(block) {
+        AtlasKind::Block => materials.particle.clone(),
+        AtlasKind::Flora => materials.particle_flora.clone(),
+        AtlasKind::Leaves => materials.particle_leaves.clone(),
+    }
+}
+
+pub fn block_item_mesh(meshes: &mut Assets<Mesh>, block: Block) -> Handle<Mesh> {
+    meshes.add(cube_mesh(block, Vec3::ONE))
 }
 
 fn tint_key(tint: Vec3) -> (u8, u8, u8) {
@@ -131,9 +170,10 @@ fn debris_mesh(
 }
 
 fn cube_mesh(block: Block, tint: Vec3) -> Mesh {
-    let top = tile_uv(block.texture(1));
-    let side = tile_uv(block.texture(0));
-    let bottom = tile_uv(block.texture(-1));
+    let kind = block_atlas_kind(block);
+    let top = atlas_uv(kind, block.texture(1));
+    let side = atlas_uv(kind, block.texture(0));
+    let bottom = atlas_uv(kind, block.texture(-1));
     let white = Vec3::ONE;
     let grass = block.is_grass_block();
     let faces: [([[f32; 3]; 4], [f32; 3], [f32; 4], Vec3); 6] = [
@@ -224,61 +264,6 @@ fn cube_mesh(block: Block, tint: Vec3) -> Mesh {
             corners,
         );
     }
-    if grass {
-        let overlay = tile_uv(TEX_GRASS_BLOCK_SIDE_OVERLAY);
-        let sides: [([[f32; 3]; 4], [f32; 3]); 4] = [
-            (
-                [
-                    [-0.5, -0.5, -0.502],
-                    [-0.5, 0.5, -0.502],
-                    [0.5, 0.5, -0.502],
-                    [0.5, -0.5, -0.502],
-                ],
-                [0.0, 0.0, -1.0],
-            ),
-            (
-                [
-                    [-0.5, -0.5, 0.502],
-                    [0.5, -0.5, 0.502],
-                    [0.5, 0.5, 0.502],
-                    [-0.5, 0.5, 0.502],
-                ],
-                [0.0, 0.0, 1.0],
-            ),
-            (
-                [
-                    [-0.502, -0.5, -0.5],
-                    [-0.502, -0.5, 0.5],
-                    [-0.502, 0.5, 0.5],
-                    [-0.502, 0.5, -0.5],
-                ],
-                [-1.0, 0.0, 0.0],
-            ),
-            (
-                [
-                    [0.502, -0.5, -0.5],
-                    [0.502, 0.5, -0.5],
-                    [0.502, 0.5, 0.5],
-                    [0.502, -0.5, 0.5],
-                ],
-                [1.0, 0.0, 0.0],
-            ),
-        ];
-        for (face, normal) in sides {
-            push_quad(
-                &mut positions,
-                &mut normals,
-                &mut uvs,
-                &mut colors,
-                &mut indices,
-                face,
-                normal,
-                overlay,
-                tint,
-                corners,
-            );
-        }
-    }
     let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
@@ -321,6 +306,7 @@ fn spawn_break_debris(
     mut meshes: ResMut<Assets<Mesh>>,
     mut cache: ResMut<DebrisMeshes>,
     materials: Res<GameMaterials>,
+    rules: Res<GameRules>,
     mut seed: Local<u32>,
 ) {
     for event in messages.read() {
@@ -334,6 +320,7 @@ fn spawn_break_debris(
             Vec3::ONE
         };
         let handle = debris_mesh(&mut meshes, &mut cache, block, tint);
+        let material = block_particle_material(&materials, block);
         let center = Vec3::new(
             event.x as f32 + 0.5,
             event.y as f32 + 0.5,
@@ -359,7 +346,7 @@ fn spawn_break_debris(
             let size = 0.10 + next_rand(&mut seed) * 0.07;
             commands.spawn((
                 Mesh3d(handle.clone()),
-                MeshMaterial3d(materials.particle.clone()),
+                MeshMaterial3d(material.clone()),
                 Transform::from_translation(center + offset).with_scale(Vec3::splat(size)),
                 Debris {
                     velocity: direction * speed + Vec3::Y * 1.2,
@@ -372,6 +359,9 @@ fn spawn_break_debris(
                 RenderLayers::layer(DEBRIS_LAYER),
             ));
         }
+        if rules.gamemode != 0 {
+            continue;
+        }
         let drop_size = 0.28;
         let velocity = Vec3::new(
             next_rand(&mut seed) - 0.5,
@@ -380,16 +370,12 @@ fn spawn_break_debris(
         ) * 1.6;
         commands.spawn((
             Mesh3d(handle.clone()),
-            MeshMaterial3d(materials.particle.clone()),
+            MeshMaterial3d(material.clone()),
             Transform::from_translation(center).with_scale(Vec3::splat(drop_size)),
             BlockDrop {
+                block,
                 velocity,
                 half: drop_size * 0.5,
-                spin: Vec3::new(
-                    (next_rand(&mut seed) - 0.5) * 4.0,
-                    (next_rand(&mut seed) - 0.5) * 4.0,
-                    (next_rand(&mut seed) - 0.5) * 4.0,
-                ),
                 age: 0.0,
                 life: DROP_LIFETIME,
                 grounded: false,
@@ -559,6 +545,7 @@ fn update_drops(
     time: Res<Time>,
     world: Res<VoxelWorld>,
     players: Query<&Player, With<Camera3d>>,
+    mut inventory: ResMut<Inventory>,
     mut commands: Commands,
     mut drops: Query<(Entity, &mut Transform, &mut BlockDrop)>,
 ) {
@@ -582,12 +569,11 @@ fn update_drops(
         drop.velocity = velocity;
         drop.grounded = grounded;
         transform.translation = position;
-        transform.rotate_local_x(drop.spin.x * dt);
-        transform.rotate_local_y(drop.spin.y * dt);
-        transform.rotate_local_z(drop.spin.z * dt);
         if let Some(player) = player {
-            if drop.age > 0.35 && position.distance(player.body) < 1.4 {
-                commands.entity(entity).despawn();
+            if drop.age > 0.35 && position.distance(player.body) < 1.7 {
+                if inventory.add_block(drop.block) {
+                    commands.entity(entity).despawn();
+                }
             }
         }
     }

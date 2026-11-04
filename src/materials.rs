@@ -166,6 +166,8 @@ impl Material for SkyMaterial {
 pub struct GameMaterials {
     pub block: Handle<BlockMaterial>,
     pub particle: Handle<BlockMaterial>,
+    pub particle_flora: Handle<BlockMaterial>,
+    pub particle_leaves: Handle<BlockMaterial>,
     pub wind: Handle<WindMaterial>,
     pub flora: Handle<WindMaterial>,
     pub leaves: Handle<WindMaterial>,
@@ -210,6 +212,40 @@ pub fn create_materials(
             metallic: 0.0,
             reflectance: 0.0,
             alpha_mode: AlphaMode::Mask(0.5),
+            ..default()
+        },
+        extension: CausticExtension {
+            params: CausticParams {
+                timing: Vec4::ZERO,
+                surface: Vec4::ZERO,
+            },
+        },
+    });
+    let particle_flora = blocks.add(BlockMaterial {
+        base: StandardMaterial {
+            base_color_texture: Some(atlas_flora.clone()),
+            perceptual_roughness: 0.95,
+            metallic: 0.0,
+            reflectance: 0.0,
+            alpha_mode: AlphaMode::Mask(0.5),
+            cull_mode: None,
+            ..default()
+        },
+        extension: CausticExtension {
+            params: CausticParams {
+                timing: Vec4::ZERO,
+                surface: Vec4::ZERO,
+            },
+        },
+    });
+    let particle_leaves = blocks.add(BlockMaterial {
+        base: StandardMaterial {
+            base_color_texture: Some(atlas_leaves.clone()),
+            perceptual_roughness: 0.95,
+            metallic: 0.0,
+            reflectance: 0.0,
+            alpha_mode: AlphaMode::Mask(0.5),
+            cull_mode: None,
             ..default()
         },
         extension: CausticExtension {
@@ -317,6 +353,8 @@ pub fn create_materials(
     GameMaterials {
         block,
         particle,
+        particle_flora,
+        particle_leaves,
         wind,
         flora,
         leaves,

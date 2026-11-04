@@ -6,7 +6,15 @@ use bevy::{
     prelude::*,
 };
 
-use crate::player::{Player, PlayerPose, ViewMode};
+use std::collections::HashMap;
+
+use crate::{
+    blocks::Block,
+    debug::HudVisible,
+    hud::Inventory,
+    materials::{BlockMaterial, GameMaterials},
+    player::{Player, PlayerPose, ViewMode},
+};
 
 const SKIN_SIZE: f32 = 64.0;
 const MODEL_SCALE: f32 = 0.9375 / 16.0;
@@ -16,6 +24,11 @@ pub struct PlayerModelRoot;
 
 #[derive(Component)]
 pub struct FirstPersonArm;
+
+#[derive(Component)]
+pub struct HeldBlock {
+    block: Option<Block>,
+}
 
 #[derive(Component)]
 pub struct PartPivot(pub Vec3);
@@ -759,4 +772,76 @@ fn push_face(
         uvs.push(face_uvs[index]);
     }
     indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+}
+
+pub fn spawn_held_block(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &GameMaterials,
+) -> Entity {
+    commands
+        .spawn((
+            HeldBlock { block: None },
+            Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+            MeshMaterial3d(materials.particle.clone()),
+            Transform::default(),
+            Visibility::Hidden,
+            NotShadowCaster,
+            RenderLayers::layer(1),
+        ))
+        .id()
+}
+
+pub fn update_held_block(
+    inventory: Res<Inventory>,
+    view: Res<ViewMode>,
+    hud: Res<HudVisible>,
+    materials: Res<GameMaterials>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut cache: Local<HashMap<Block, Handle<Mesh>>>,
+    players: Query<(&Player, &GlobalTransform), With<Camera3d>>,
+    mut held: Query<(
+        &mut HeldBlock,
+        &mut Mesh3d,
+        &mut MeshMaterial3d<BlockMaterial>,
+        &mut Transform,
+        &mut Visibility,
+    )>,
+) {
+    let (Ok((player, camera)), Ok((mut state, mut mesh, mut material, mut transform, mut visibility))) =
+        (players.single(), held.single_mut())
+    else {
+        return;
+    };
+    let selected = inventory.slots[inventory.selected].map(|stack| stack.block);
+    if view.mode != 0 || !hud.0 || selected.is_none() {
+        *visibility = Visibility::Hidden;
+        state.block = None;
+        return;
+    }
+    let block = selected.unwrap();
+    if state.block != Some(block) {
+        let handle = cache
+            .entry(block)
+            .or_insert_with(|| crate::particles::block_item_mesh(&mut meshes, block));
+        mesh.0 = handle.clone();
+        material.0 = crate::particles::block_particle_material(&materials, block);
+        state.block = Some(block);
+    }
+    let rotation = camera.rotation();
+    let forward = rotation * Vec3::NEG_Z;
+    let right = rotation * Vec3::X;
+    let up = rotation * Vec3::Y;
+    let swing = if player.swinging {
+        (player.swing.clamp(0.0, 1.0) * std::f32::consts::PI).sin()
+    } else {
+        0.0
+    };
+    let base = camera.translation() + forward * 0.62 - up * 0.30 + right * 0.30;
+    transform.translation = base - up * (swing * 0.12) + forward * (swing * 0.10);
+    transform.rotation = rotation
+        * Quat::from_rotation_y(0.55)
+        * Quat::from_rotation_x(-0.30 + swing * 0.7);
+    transform.scale = Vec3::splat(0.26);
+    *visibility = Visibility::Inherited;
 }

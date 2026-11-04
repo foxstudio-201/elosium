@@ -7,15 +7,17 @@ use bevy::{
 };
 
 use crate::{
+    blocks::Block,
     debug::HudVisible,
     frontend::{Screen, ScreenState},
+    pack_atlas::{BLOCK_UV_RECTS, FLORA_UV_RECTS, LEAF_UV_RECTS},
 };
 
 pub const HOTBAR_SLOTS: usize = 9;
 
 #[derive(Clone, Copy, Debug)]
 pub struct ItemStack {
-    pub block: u8,
+    pub block: Block,
     pub count: u32,
 }
 
@@ -23,6 +25,36 @@ pub struct ItemStack {
 pub struct Inventory {
     pub slots: [Option<ItemStack>; HOTBAR_SLOTS],
     pub selected: usize,
+}
+
+impl Inventory {
+    pub fn add_block(&mut self, block: Block) -> bool {
+        for slot in &mut self.slots {
+            if let Some(stack) = slot {
+                if stack.block == block && stack.count < 64 {
+                    stack.count += 1;
+                    return true;
+                }
+            }
+        }
+        for slot in &mut self.slots {
+            if slot.is_none() {
+                *slot = Some(ItemStack { block, count: 1 });
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn take_selected(&mut self) -> Option<Block> {
+        let slot = self.slots[self.selected].as_mut()?;
+        let block = slot.block;
+        slot.count -= 1;
+        if slot.count == 0 {
+            self.slots[self.selected] = None;
+        }
+        Some(block)
+    }
 }
 
 impl Default for Inventory {
@@ -66,6 +98,41 @@ pub struct GameHud;
 
 #[derive(Component, Clone, Copy)]
 pub struct SlotButton(pub usize);
+
+#[derive(Component)]
+pub struct ItemIcon(pub usize);
+
+#[derive(Resource)]
+pub struct ItemAtlases {
+    block: AtlasSet,
+    flora: AtlasSet,
+    leaves: AtlasSet,
+}
+
+struct AtlasSet {
+    image: Handle<Image>,
+    layout: Handle<TextureAtlasLayout>,
+    columns: u32,
+    rows: u32,
+}
+
+impl ItemAtlases {
+    fn icon(&self, block: Block) -> (Handle<Image>, Handle<TextureAtlasLayout>, usize) {
+        let (set, rects, face) = if block.is_plant() {
+            (&self.flora, FLORA_UV_RECTS.as_slice(), 0)
+        } else if block.is_leaves() {
+            (&self.leaves, LEAF_UV_RECTS.as_slice(), 0)
+        } else {
+            (&self.block, BLOCK_UV_RECTS.as_slice(), 1)
+        };
+        let tile = (block.texture(face) as usize).min(rects.len() - 1);
+        let rect = rects[tile];
+        let x = (rect[0] * set.columns as f32).round() as usize;
+        let y = (rect[1] * set.rows as f32).round() as usize;
+        let index = y * set.columns as usize + x;
+        (set.image.clone(), set.layout.clone(), index)
+    }
+}
 
 #[derive(Component, Clone, Copy)]
 pub struct BarFill(BarKind);
@@ -131,6 +198,7 @@ impl Plugin for HudPlugin {
                     select_hotbar,
                     sync_hud_visibility,
                     update_hotbar_selection,
+                    update_slot_icons,
                     update_bars,
                 ),
             );
@@ -240,8 +308,30 @@ fn spawn_bar(
 fn spawn_hud(
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
+    mut layouts: ResMut<Assets<TextureAtlasLayout>>,
     asset_server: Res<AssetServer>,
 ) {
+    let pixel = UVec2::splat(16);
+    commands.insert_resource(ItemAtlases {
+        block: AtlasSet {
+            image: asset_server.load("textures/atlas.png"),
+            layout: layouts.add(TextureAtlasLayout::from_grid(pixel, 64, 4, None, None)),
+            columns: 64,
+            rows: 4,
+        },
+        flora: AtlasSet {
+            image: asset_server.load("textures/atlas_flora.png"),
+            layout: layouts.add(TextureAtlasLayout::from_grid(pixel, 32, 4, None, None)),
+            columns: 32,
+            rows: 4,
+        },
+        leaves: AtlasSet {
+            image: asset_server.load("textures/atlas_leaves.png"),
+            layout: layouts.add(TextureAtlasLayout::from_grid(pixel, 64, 4, None, None)),
+            columns: 64,
+            rows: 4,
+        },
+    });
     let heart = pixel_icon(
         &mut images,
         [
@@ -424,22 +514,38 @@ fn spawn_hud(
                     .with_children(|hotbar| {
                         for index in 0..HOTBAR_SLOTS {
                             let selected = index == 0;
-                            hotbar.spawn((
-                                SlotButton(index),
-                                Node {
-                                    width: px(38.0),
-                                    height: px(38.0),
-                                    border: UiRect::all(px(1.0)),
-                                    border_radius: BorderRadius::all(px(4.0)),
-                                    ..default()
-                                },
-                                BackgroundColor(if selected { SLOT_SELECTED_BG } else { SLOT_BG }),
-                                BorderColor::all(if selected {
-                                    SLOT_SELECTED_BORDER
-                                } else {
-                                    SLOT_BORDER
-                                }),
-                            ));
+                            hotbar
+                                .spawn((
+                                    SlotButton(index),
+                                    Node {
+                                        width: px(38.0),
+                                        height: px(38.0),
+                                        border: UiRect::all(px(1.0)),
+                                        border_radius: BorderRadius::all(px(4.0)),
+                                        ..default()
+                                    },
+                                    BackgroundColor(if selected { SLOT_SELECTED_BG } else { SLOT_BG }),
+                                    BorderColor::all(if selected {
+                                        SLOT_SELECTED_BORDER
+                                    } else {
+                                        SLOT_BORDER
+                                    }),
+                                ))
+                                .with_children(|slot| {
+                                    slot.spawn((
+                                        ItemIcon(index),
+                                        ImageNode::default(),
+                                        Node {
+                                            position_type: PositionType::Absolute,
+                                            left: px(4.0),
+                                            top: px(4.0),
+                                            width: px(28.0),
+                                            height: px(28.0),
+                                            ..default()
+                                        },
+                                        Visibility::Hidden,
+                                    ));
+                                });
                         }
                     });
             });
@@ -548,6 +654,28 @@ fn update_bars(
     if vitals.is_changed() {
         for mut text in &mut level {
             text.0 = vitals.level.to_string();
+        }
+    }
+}
+
+fn update_slot_icons(
+    inventory: Res<Inventory>,
+    atlases: Res<ItemAtlases>,
+    mut icons: Query<(&ItemIcon, &mut ImageNode, &mut Visibility)>,
+) {
+    if !inventory.is_changed() {
+        return;
+    }
+    for (icon, mut image, mut visibility) in &mut icons {
+        match inventory.slots[icon.0] {
+            Some(stack) => {
+                let (atlas, layout, index) = atlases.icon(stack.block);
+                *image = ImageNode::from_atlas_image(atlas, TextureAtlas { layout, index });
+                *visibility = Visibility::Inherited;
+            }
+            None => {
+                *visibility = Visibility::Hidden;
+            }
         }
     }
 }

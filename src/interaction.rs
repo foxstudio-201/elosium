@@ -10,6 +10,7 @@ use bevy::{
 use crate::{
     debug::HudVisible,
     frontend::GameRules,
+    hud::Inventory,
     menu::MenuState,
     player::{Player, ViewMode, PLAYER_WIDTH},
     reflection::ReflectionCamera,
@@ -154,6 +155,7 @@ pub fn break_block(
 pub fn place_block(
     menu: Res<MenuState>,
     rules: Res<GameRules>,
+    mut inventory: ResMut<Inventory>,
     mouse: Res<ButtonInput<MouseButton>>,
     view: Res<ViewMode>,
     cursor: Single<&CursorOptions>,
@@ -168,14 +170,17 @@ pub fn place_block(
     if !active || !mouse.just_pressed(MouseButton::Right) {
         return;
     }
+    let Some(stack) = inventory.slots[inventory.selected] else {
+        return;
+    };
+    let block = stack.block;
     let Ok((origin, direction, max_distance)) = players.single().map(aim_ray) else {
         return;
     };
     let Some((hit_x, hit_y, hit_z)) = raycast(&world, origin, direction, max_distance) else {
         return;
     };
-    let block = world.get_block(hit_x, hit_y, hit_z);
-    if block == Block::Air {
+    if world.get_block(hit_x, hit_y, hit_z) == Block::Air {
         return;
     }
     let Some((x, y, z)) = place_cell(&world, origin, direction, max_distance) else {
@@ -196,6 +201,9 @@ pub fn place_block(
     player.swing = 0.0;
     world.set_block_recorded(x, y, z, block);
     renderer.mark_block_dirty(x, y, z);
+    if rules.gamemode == 0 {
+        inventory.take_selected();
+    }
 }
 
 fn place_cell(

@@ -58,8 +58,8 @@ use player::{
 };
 use player_model::{
     animate_first_person_arm, animate_player_model, clear_clones_off_world,
-    push_player_from_clones, spawn_clone_players, spawn_player_model, tick_clones,
-    update_name_tags, SpawnClone,
+    push_player_from_clones, spawn_clone_players, spawn_held_block, spawn_player_model,
+    tick_clones, update_held_block, update_name_tags, SpawnClone,
 };
 use reflection::{create_image, spawn_camera, sync_reflection, ReflectionCamera};
 use streaming::{stream_chunks, update_occluders, ChunkRenderer, LoadWarmup, RenderSettings};
@@ -181,6 +181,7 @@ fn main() {
                     animate_player_model,
                     update_player_layers,
                     animate_first_person_arm,
+                    update_held_block,
                     spawn_clone_players,
                     tick_clones,
                     update_name_tags,
@@ -263,6 +264,7 @@ fn setup(
         &mut standard_materials,
         &asset_server,
     );
+    spawn_held_block(&mut commands, &mut meshes, &handles);
 
     let preview = (std::env::var("ELOSIUM_CAPTURE").is_ok()
         && std::env::var("ELOSIUM_UI").is_err())
