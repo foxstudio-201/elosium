@@ -26,10 +26,11 @@ fn fragment(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
     var color = sample_view(uv + wave * distortion * underwater);
 
     if underwater > 0.5 {
-        color = mix(color, color * vec3<f32>(0.78, 0.96, 1.15), 0.55);
+        color = mix(color, color * vec3<f32>(0.66, 0.93, 1.15), 0.65);
+        let depth_dim = 1.0 - 0.35 * smoothstep(8.0, 32.0, fx.surface.y);
         let centered = uv * 2.0 - vec2<f32>(1.0);
         let vignette = 1.0 - fx.params.w * dot(centered, centered);
-        color = color * max(vignette, 0.0);
+        color = color * depth_dim * max(vignette, 0.0);
     }
 
     return vec4<f32>(color, 1.0);

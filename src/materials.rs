@@ -107,6 +107,7 @@ pub struct SkyParams {
     pub zenith: Vec4,
     pub horizon: Vec4,
     pub timing: Vec4,
+    pub water: Vec4,
 }
 
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
@@ -347,6 +348,7 @@ pub fn create_materials(
             zenith: Vec4::new(0.12, 0.28, 0.62, 0.0),
             horizon: Vec4::new(0.55, 0.72, 0.95, 0.0),
             timing: Vec4::ZERO,
+            water: Vec4::ZERO,
         },
     });
 

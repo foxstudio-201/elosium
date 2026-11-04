@@ -7,6 +7,7 @@ struct SkyParams {
     zenith: vec4<f32>,
     horizon: vec4<f32>,
     timing: vec4<f32>,
+    water: vec4<f32>,
 };
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> params: SkyParams;
@@ -37,6 +38,11 @@ fn value_noise(point: vec2<f32>) -> f32 {
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let direction = normalize(in.world_position.xyz - params.camera_pos.xyz);
+    if params.water.x > 0.5 {
+        let water = params.water.yzw;
+        let up = clamp(direction.y, 0.0, 1.0);
+        return vec4<f32>(mix(water * 0.85, water * 1.08, pow(up, 0.55)), 1.0);
+    }
     let sky = clamp(direction.y, 0.0, 1.0);
     let sun = normalize(params.sun_dir.xyz);
     let night = params.timing.y;

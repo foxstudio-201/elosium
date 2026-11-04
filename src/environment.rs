@@ -5,14 +5,14 @@ use bevy::{
 
 use crate::{
     daynight::SunLight,
-    materials::{BlockMaterial, FOG_DENSITY, GameMaterials, WaterMaterial},
+    materials::{BlockMaterial, FOG_DENSITY, GameMaterials, SkyMaterial, WaterMaterial},
     menu::Settings,
     reflection::ReflectionCamera,
     world::VoxelWorld,
 };
 
 const WATER_FOG_DISTANCE: f32 = 96.0;
-const WATER_FOG_SCALE: f32 = 0.25;
+const WATER_FOG_SCALE: f32 = 0.32;
 const AIR_VOLUME: Color = Color::srgb(0.78, 0.85, 0.96);
 
 #[derive(Component)]
@@ -46,6 +46,7 @@ pub fn update_environment_effects(
     handles: Res<GameMaterials>,
     mut waters: ResMut<Assets<WaterMaterial>>,
     mut blocks: ResMut<Assets<BlockMaterial>>,
+    mut skies: ResMut<Assets<SkyMaterial>>,
     settings: Res<Settings>,
     mut clear: ResMut<ClearColor>,
     mut state: ResMut<EnvironmentState>,
@@ -98,12 +99,12 @@ pub fn update_environment_effects(
         fog_transform.translation = eye;
         fog_transform.scale = Vec3::new(220.0, 180.0, 220.0);
         if underwater {
-            fog_volume.fog_color = Color::srgb(0.12, 0.40, 0.58);
-            fog_volume.density_factor = 0.009;
-            fog_volume.absorption = 0.01;
-            fog_volume.scattering = 0.80;
-            fog_volume.scattering_asymmetry = 0.42;
-            fog_volume.light_intensity = (0.9 + 0.4 * moon) * godray.powf(0.7);
+            fog_volume.fog_color = Color::srgb(0.10, 0.36, 0.44);
+            fog_volume.density_factor = 0.012;
+            fog_volume.absorption = 0.02;
+            fog_volume.scattering = 0.85;
+            fog_volume.scattering_asymmetry = 0.30;
+            fog_volume.light_intensity = (1.2 + 0.3 * moon) * godray.powf(0.7);
         } else {
             fog_volume.fog_color = AIR_VOLUME;
             fog_volume.density_factor = 0.0045;
@@ -125,11 +126,16 @@ pub fn update_environment_effects(
     }
 
     if underwater {
-        let water_fog = Color::srgb(
-            0.03 + 0.04 * day,
-            0.18 + 0.10 * day,
-            0.32 + 0.14 * day,
-        );
+        let depth_below = (state.water_surface - eye.y).max(0.0);
+        let deep = (depth_below / 28.0).clamp(0.0, 1.0);
+        let light = 0.12 + 0.88 * day;
+        let shallow = Vec3::new(0.10, 0.36, 0.44);
+        let deep_color = Vec3::new(0.02, 0.09, 0.17);
+        let tint = shallow.lerp(deep_color, deep) * light;
+        let water_fog = Color::srgb(tint.x, tint.y, tint.z);
+        if let Some(mut sky) = skies.get_mut(&handles.sky) {
+            sky.params.water = Vec4::new(1.0, tint.x, tint.y, tint.z);
+        }
         fog.color = water_fog;
         fog.directional_light_color = water_fog;
         fog.directional_light_exponent = 6.0;
@@ -139,6 +145,9 @@ pub fn update_environment_effects(
         };
         *clear = ClearColor(water_fog);
     } else {
+        if let Some(mut sky) = skies.get_mut(&handles.sky) {
+            sky.params.water = Vec4::ZERO;
+        }
         fog.falloff = FogFalloff::ExponentialSquared {
             density: FOG_DENSITY / settings.fog_radius.max(0.1),
         };
