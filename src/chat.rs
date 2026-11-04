@@ -234,7 +234,8 @@ fn chat_input(
     mut day: ResMut<DayCycle>,
     mut rules: ResMut<GameRules>,
     mut inventory: ResMut<Inventory>,
-    world: Res<crate::world::VoxelWorld>,
+    mut world: ResMut<crate::world::VoxelWorld>,
+    mut renderer: ResMut<crate::streaming::ChunkRenderer>,
     mut clones: MessageWriter<crate::player_model::SpawnClone>,
 ) {
     let playing = screen.screen == Screen::Playing;
@@ -323,6 +324,8 @@ fn chat_input(
                                 rules: &mut rules,
                                 inventory: &mut inventory,
                                 seed: world.seed(),
+                                world: &mut world,
+                                renderer: &mut renderer,
                             };
                             command_result = Some(crate::commands::execute(&message, &mut ctx));
                         }
@@ -372,7 +375,7 @@ impl ChatState {
 fn chat_suggestions(
     mut state: ResMut<ChatState>,
     mut box_query: Query<&mut Visibility, With<ChatSuggestBox>>,
-    mut rows: Query<(&SuggestionRow, &mut Visibility), Without<ChatSuggestBox>>,
+    mut rows: Query<(&SuggestionRow, &mut Visibility, &mut Node), Without<ChatSuggestBox>>,
     mut texts: Query<(&SuggestionText, &mut Text), Without<SuggestionRow>>,
     buttons: Query<(Entity, &SuggestionRow, Has<Pressed>), With<Button>>,
     mut held: Local<std::collections::HashSet<Entity>>,
@@ -381,8 +384,9 @@ fn chat_suggestions(
         for mut visibility in &mut box_query {
             *visibility = Visibility::Hidden;
         }
-        for (_, mut visibility) in &mut rows {
+        for (_, mut visibility, mut node) in &mut rows {
             *visibility = Visibility::Hidden;
+            node.display = Display::None;
         }
         held.clear();
         return;
@@ -395,12 +399,14 @@ fn chat_suggestions(
             Visibility::Inherited
         };
     }
-    for (row, mut visibility) in &mut rows {
-        *visibility = if row.0 < list.len() {
+    for (row, mut visibility, mut node) in &mut rows {
+        let shown = row.0 < list.len();
+        *visibility = if shown {
             Visibility::Inherited
         } else {
             Visibility::Hidden
         };
+        node.display = if shown { Display::Flex } else { Display::None };
     }
     for (text, mut label) in &mut texts {
         let value = list.get(text.0).cloned().unwrap_or_default();

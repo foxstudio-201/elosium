@@ -462,24 +462,23 @@ pub fn spawn_screens(
                     TextColor(MUTED),
                 ));
                 bar.spawn((
+                    crate::ui_theme::sliced(theme.bar_frame.clone(), 10.0),
                     Node {
                         width: percent(100),
-                        height: px(6),
-                        border_radius: BorderRadius::all(px(3)),
+                        height: px(18),
+                        padding: UiRect::all(px(4)),
                         ..default()
                     },
-                    BackgroundColor(TRACK_BG),
                 ))
                 .with_children(|track| {
                     track.spawn((
                         LoadingFill,
+                        crate::ui_theme::sliced(theme.bar_fill_mp.clone(), 4.0),
                         Node {
                             width: percent(0),
                             height: percent(100),
-                            border_radius: BorderRadius::all(px(3)),
                             ..default()
                         },
-                        BackgroundColor(ACCENT),
                     ));
                 });
             });

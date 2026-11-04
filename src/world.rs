@@ -746,8 +746,7 @@ impl VoxelWorld {
     }
 
     pub fn find_land_spawn(&mut self, center: ChunkPos) -> Vec3 {
-        let mut best: Option<(i32, i32, i32)> = None;
-        let mut best_score = i32::MIN;
+        let mut candidates: Vec<(i32, i32, i32, i32)> = Vec::new();
         for dx in (-512..=512).step_by(32) {
             for dz in (-512..=512).step_by(32) {
                 let x = center.origin_x() + 8 + dx;
@@ -774,54 +773,58 @@ impl VoxelWorld {
                         }
                     }
                 }
-                if score > best_score {
-                    best_score = score;
-                    best = Some((x, z, column.height));
-                }
+                candidates.push((score, x, z, column.height));
             }
         }
-        if let Some((x, z, height)) = best {
+        candidates.sort_by(|a, b| b.0.cmp(&a.0));
+        for (_, x, z, height) in candidates.iter().take(24) {
+            let (x, z, height) = (*x, *z, *height);
             let chunk = ChunkPos::from_block(x, z);
-            self.load_chunk(chunk);
-            for ox in (-8..=8).step_by(1) {
-                for oz in (-8..=8).step_by(1) {
-                    let sx = x + ox;
-                    let sz = z + oz;
-                    let pos = ChunkPos::from_block(sx, sz);
+            for cx in -1..=1 {
+                for cz in -1..=1 {
+                    let pos = ChunkPos::new(chunk.x + cx, chunk.z + cz);
                     if !self.is_loaded(pos) {
                         self.load_chunk(pos);
                     }
-                    let height = self.surface_height(sx, sz);
-                    if height <= SEA_LEVEL || height >= MAX_Y - 32 {
-                        continue;
-                    }
-                    if let Some(info) = self.column_at(sx, sz)
-                        && info.height < info.water_top
-                    {
-                        continue;
-                    }
-                    if !self.get_block(sx, height, sz).is_soil() {
-                        continue;
-                    }
-                    if (1..=4).any(|dy| !self.get_block(sx, height + dy, sz).is_air()) {
-                        continue;
-                    }
-                    return Vec3::new(
-                        sx as f32 + 0.5,
-                        (height + 1) as f32 + 0.01,
-                        sz as f32 + 0.5,
-                    );
                 }
+            }
+            let mut open = true;
+            'area: for dx in -4..=4 {
+                for dz in -4..=4 {
+                    let sx = x + dx * 2;
+                    let sz = z + dz * 2;
+                    let surface = self.surface_height(sx, sz);
+                    if (surface - height).abs() > 5 {
+                        open = false;
+                        break 'area;
+                    }
+                    for dy in 1..=16 {
+                        if !self.get_block(sx, surface + dy, sz).is_air() {
+                            open = false;
+                            break 'area;
+                        }
+                    }
+                }
+            }
+            if !open {
+                continue;
+            }
+            if let Some(info) = self.column_at(x, z)
+                && info.height < info.water_top
+            {
+                continue;
+            }
+            if !self.get_block(x, height, z).is_soil() {
+                continue;
             }
             return Vec3::new(x as f32 + 0.5, (height + 1) as f32 + 0.01, z as f32 + 0.5);
         }
-        let x = center.origin_x() + 8;
-        let z = center.origin_z() + 8;
-        Vec3::new(
-            x as f32 + 0.5,
-            (self.surface_height(x, z) + 1) as f32 + 0.01,
-            z as f32 + 0.5,
-        )
+        let x = candidates.first().map_or(center.origin_x() + 8, |entry| entry.1);
+        let z = candidates.first().map_or(center.origin_z() + 8, |entry| entry.2);
+        let chunk = ChunkPos::from_block(x, z);
+        self.load_chunk(chunk);
+        let height = self.surface_height(x, z);
+        Vec3::new(x as f32 + 0.5, (height + 1) as f32 + 0.01, z as f32 + 0.5)
     }
 
     pub fn edits(&self) -> &HashMap<(i32, i32, i32), Block> {

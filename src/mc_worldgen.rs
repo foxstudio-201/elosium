@@ -221,10 +221,10 @@ impl Session {
                         let mut shift_x = 0.0;
                         let mut shift_z = 0.0;
                         if let Some(node) = object.get("shift_x") {
-                            shift_x = self.eval(node, x, y, z) * 4.0;
+                            shift_x = self.eval(node, x, y, z);
                         }
                         if let Some(node) = object.get("shift_z") {
-                            shift_z = self.eval(node, x, y, z) * 4.0;
+                            shift_z = self.eval(node, x, y, z);
                         }
                         let noise = self.noise(noise_name);
                         noise.sample(
@@ -289,7 +289,18 @@ impl Session {
         let last = points[points.len() - 1]["location"]
             .as_f64()
             .unwrap_or(1.0) as f32;
-        let position = coordinate.clamp(first, last);
+        if coordinate <= first {
+            let start_value = self.spline_value(&points[0]["value"], x, y, z);
+            let derivative = points[0]["derivative"].as_f64().unwrap_or(0.0) as f32;
+            return start_value + derivative * (coordinate - first);
+        }
+        if coordinate >= last {
+            let end = &points[points.len() - 1];
+            let end_value = self.spline_value(&end["value"], x, y, z);
+            let derivative = end["derivative"].as_f64().unwrap_or(0.0) as f32;
+            return end_value + derivative * (coordinate - last);
+        }
+        let position = coordinate;
         let mut index = 0usize;
         while index + 2 < points.len()
             && position >= points[index + 1]["location"].as_f64().unwrap_or(0.0) as f32
@@ -339,13 +350,17 @@ impl Session {
             None => 320,
         }
         .clamp(lower, 320);
+        let cell = object
+            .get("cell_height")
+            .and_then(Value::as_i64)
+            .unwrap_or(8) as i32;
         let density = &object["density"];
         let mut y = upper;
         while y >= lower {
-            if self.eval(density, x, y as f32 + 0.5, z) > 0.0 {
+            if self.eval(density, x, y as f32, z) > 0.0 {
                 return Some(y);
             }
-            y -= 1;
+            y -= cell.max(1);
         }
         Some(lower)
     }
@@ -435,7 +450,7 @@ impl NormalNoise {
             }
             frequency *= 2.0;
         }
-        sum / normalization
+        sum / normalization * 3.0
     }
 }
 

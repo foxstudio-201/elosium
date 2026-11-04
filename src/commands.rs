@@ -6,6 +6,8 @@ use crate::{
     frontend::GameRules,
     hud::{Inventory, ItemStack},
     player::Player,
+    streaming::ChunkRenderer,
+    world::VoxelWorld,
 };
 
 pub struct CommandContext<'a> {
@@ -13,6 +15,8 @@ pub struct CommandContext<'a> {
     pub player: &'a mut Player,
     pub rules: &'a mut GameRules,
     pub inventory: &'a mut Inventory,
+    pub world: &'a mut VoxelWorld,
+    pub renderer: &'a mut ChunkRenderer,
     pub seed: u32,
 }
 
@@ -84,7 +88,7 @@ pub fn execute(message: &str, ctx: &mut CommandContext) -> String {
         return String::new();
     };
     match command {
-        "/help" => "Lệnh: /gamemode /time /tp /give /clear /seed /clone /whoami".to_string(),
+        "/help" => "Lệnh: /gamemode /time /tp /give /setblock /clear /seed /clone /whoami".to_string(),
         "/seed" => format!("Seed: {}", ctx.seed),
         "/gamemode" => {
             let Some(value) = parts.next() else {
@@ -149,6 +153,26 @@ pub fn execute(message: &str, ctx: &mut CommandContext) -> String {
             });
             format!("Đã nhận {} x{}", name, count.clamp(1, 64))
         }
+        "/setblock" => {
+            let coords: Vec<i32> = parts
+                .by_ref()
+                .take(3)
+                .filter_map(|part| part.parse().ok())
+                .collect();
+            let Some(name) = parts.next() else {
+                return "Dùng: /setblock <x> <y> <z> <block>".to_string();
+            };
+            if coords.len() != 3 {
+                return "Dùng: /setblock <x> <y> <z> <block>".to_string();
+            }
+            let Some(block) = block_from_name(name) else {
+                return format!("Không có block: {name}");
+            };
+            let (x, y, z) = (coords[0], coords[1], coords[2]);
+            ctx.world.set_block_recorded(x, y, z, block);
+            ctx.renderer.mark_block_dirty(x, y, z);
+            format!("Đã đặt {name} tại {x} {y} {z}")
+        }
         "/clear" => {
             for slot in &mut ctx.inventory.slots {
                 *slot = None;
@@ -211,6 +235,15 @@ pub fn suggestions(input: &str) -> Vec<String> {
                 out.sort();
                 out.dedup();
             }
+            "/setblock" => {
+                if args.len() == 4 {
+                    for (name, _) in BLOCK_NAMES {
+                        if name.starts_with(partial) {
+                            push(name, "");
+                        }
+                    }
+                }
+            }
             "/give" => {
                 if args.len() <= 1 {
                     for (name, _) in BLOCK_NAMES {
@@ -229,7 +262,7 @@ pub fn suggestions(input: &str) -> Vec<String> {
         }
         return out.into_iter().take(8).collect();
     }
-    let mut out: Vec<String> = ["/help", "/gamemode", "/time", "/tp", "/give", "/clear", "/seed"]
+    let mut out: Vec<String> = ["/help", "/gamemode", "/time", "/tp", "/give", "/setblock", "/clear", "/seed"]
         .iter()
         .filter(|command| command.starts_with(head))
         .map(|command| (*command).to_string())

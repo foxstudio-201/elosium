@@ -235,6 +235,7 @@ fn main() {
 fn setup(
     mut commands: Commands,
     theme: Res<ui_theme::UiAssets>,
+    mut rules: ResMut<frontend::GameRules>,
     render: Res<RenderSettings>,
     mut view: ResMut<ViewMode>,
     asset_server: Res<AssetServer>,
@@ -284,8 +285,61 @@ fn setup(
             Some(ChunkPos::new(x.trim().parse().ok()?, z.trim().parse().ok()?))
         })
         .unwrap_or(ChunkPos::new(3, 6));
-    let mut voxel_world = VoxelWorld::new(4_038_368_238);
+    if let Ok(value) = std::env::var("ELOSIUM_GAMEMODE") {
+        rules.gamemode = value.trim().parse().unwrap_or(0);
+    }
+    let preview_seed = std::env::var("ELOSIUM_SEED")
+        .ok()
+        .and_then(|value| value.trim().parse::<u32>().ok())
+        .unwrap_or(4_038_368_238);
+    let mut voxel_world = VoxelWorld::new(preview_seed);
     let mut spawn_feet = Vec3::new(8.5, 100.0, 8.5);
+    if let Ok(path) = std::env::var("ELOSIUM_MAP") {
+        let seed = std::env::var("ELOSIUM_SEED")
+            .ok()
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(4_038_368_238);
+        let span = 1536;
+        let step = 16;
+        let size = (span * 2 / step) as usize;
+        let mut pixels = Vec::with_capacity(size * size * 3);
+        let mut land = 0usize;
+        for iz in 0..size {
+            for ix in 0..size {
+                let x = -span + ix as i32 * step;
+                let z = -span + iz as i32 * step;
+                let column = worldgen::column(x, z, seed);
+                let ocean = column.water_top > column.height || column.height < crate::world::SEA_LEVEL;
+                if ocean {
+                    pixels.extend_from_slice(&[28, 62, 120]);
+                } else {
+                    land += 1;
+                    let h = column.height;
+                    let color = if column.biome == crate::blocks::Biome::Beach || h <= crate::world::SEA_LEVEL + 2 {
+                        [214, 196, 138]
+                    } else if h > 150 {
+                        [235, 240, 245]
+                    } else if h > 110 {
+                        [120, 118, 112]
+                    } else {
+                        [72, 138, 64]
+                    };
+                    pixels.extend_from_slice(&color);
+                }
+            }
+        }
+        let mut ppm = format!("P6
+{size} {size}
+255
+").into_bytes();
+        ppm.extend_from_slice(&pixels);
+        std::fs::write(&path, ppm).ok();
+        println!(
+            "MAP seed={seed} land={:.1}% path={path}",
+            land as f32 * 100.0 / (size * size) as f32
+        );
+        std::process::exit(0);
+    }
     if preview {
         if std::env::var("ELOSIUM_BAKE_PANORAMA").is_err() {
             for dx in -render.distance..=render.distance {
