@@ -14,6 +14,11 @@ struct UnderwaterFx {
 @group(0) @binding(1) var source_sampler: sampler;
 @group(0) @binding(2) var<uniform> fx: UnderwaterFx;
 
+fn sample_view(uv: vec2<f32>) -> vec3<f32> {
+    let clamped = clamp(uv, vec2<f32>(0.0015), vec2<f32>(0.9985));
+    return textureSample(source_texture, source_sampler, clamped).rgb;
+}
+
 @fragment
 fn fragment(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
     let time = fx.params.x;
