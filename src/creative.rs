@@ -4,6 +4,7 @@ use bevy::{
         mouse::{MouseScrollUnit, MouseWheel},
     },
     prelude::*,
+    ui::Pressed,
     ui_widgets::Button,
     window::{CursorGrabMode, CursorOptions},
 };
@@ -462,30 +463,39 @@ fn refresh_creative(
 fn click_creative(
     mut state: ResMut<CreativeState>,
     mut inventory: ResMut<Inventory>,
-    mut buttons: Query<(&Interaction, &CreativeTabButton), (Changed<Interaction>, With<Button>)>,
-    mut slots: Query<(&Interaction, &CreativeSlot), (Changed<Interaction>, With<Button>)>,
+    buttons: Query<(Entity, &CreativeTabButton, Has<Pressed>), With<Button>>,
+    slots: Query<(Entity, &CreativeSlot, Has<Pressed>), With<Button>>,
+    mut held: Local<std::collections::HashSet<Entity>>,
 ) {
     if !state.open {
+        held.clear();
         return;
     }
-    for (interaction, tab) in &mut buttons {
-        if *interaction == Interaction::Pressed {
-            state.tab = tab.0;
-            state.page = 0;
+    for (entity, tab, pressed) in &buttons {
+        if pressed {
+            if held.insert(entity) {
+                state.tab = tab.0;
+                state.page = 0;
+            }
+        } else {
+            held.remove(&entity);
         }
     }
     let blocks = filtered_blocks(&state);
     let page = state
         .page
         .min(blocks.chunks(PAGE_SIZE).count().max(1) - 1);
-    for (interaction, slot) in &mut slots {
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
-        let index = page * PAGE_SIZE + slot.0;
-        if let Some(block) = blocks.get(index).copied() {
-            let selected = inventory.selected;
-            inventory.slots[selected] = Some(ItemStack { block, count: 64 });
+    for (entity, slot, pressed) in &slots {
+        if pressed {
+            if held.insert(entity) {
+                let index = page * PAGE_SIZE + slot.0;
+                if let Some(block) = blocks.get(index).copied() {
+                    let selected = inventory.selected;
+                    inventory.slots[selected] = Some(ItemStack { block, count: 64 });
+                }
+            }
+        } else {
+            held.remove(&entity);
         }
     }
 }

@@ -1,5 +1,6 @@
 mod blocks;
 mod chat;
+mod commands;
 mod clouds;
 mod creative;
 mod daynight;
@@ -260,7 +261,7 @@ fn setup(
         reflection_image,
     );
     clouds::spawn_clouds(&mut commands, &mut meshes, &handles);
-    spawn_crosshair(&mut commands, &mut meshes, &mut standard_materials);
+    spawn_crosshair(&mut commands, &asset_server);
     spawn_debug_overlay(&mut commands, &asset_server);
     spawn_debug_boxes(&mut commands, &mut meshes, &mut standard_materials);
     spawn_block_outline(&mut commands, &mut meshes, &mut standard_materials);

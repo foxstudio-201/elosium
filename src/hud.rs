@@ -149,6 +149,9 @@ pub struct ItemLabel;
 #[derive(Component)]
 pub struct ItemLabelText;
 
+#[derive(Component)]
+pub struct ItemCount(pub usize);
+
 #[derive(Resource)]
 pub struct ItemAtlases {
     block: AtlasSet,
@@ -657,6 +660,23 @@ fn spawn_hud(
                                         },
                                         Visibility::Hidden,
                                     ));
+                                    slot.spawn((
+                                        ItemCount(index),
+                                        Text::new(""),
+                                        TextFont {
+                                            font: font.clone().into(),
+                                            font_size: FontSize::Px(11.0),
+                                            ..default()
+                                        },
+                                        TextColor(Color::WHITE),
+                                        TextShadow::default(),
+                                        Node {
+                                            position_type: PositionType::Absolute,
+                                            right: px(4.0),
+                                            bottom: px(2.0),
+                                            ..default()
+                                        },
+                                    ));
                                 });
                         }
                     });
@@ -770,6 +790,7 @@ fn update_slot_icons(
     inventory: Res<Inventory>,
     atlases: Res<ItemAtlases>,
     mut icons: Query<(&ItemIcon, &mut ImageNode, &mut Visibility)>,
+    mut counts: Query<(&ItemCount, &mut Text), Without<ItemIcon>>,
 ) {
     if !inventory.is_changed() {
         return;
@@ -784,6 +805,17 @@ fn update_slot_icons(
             None => {
                 *visibility = Visibility::Hidden;
             }
+        }
+    }
+    for (count, mut text) in &mut counts {
+        let value = inventory.slots[count.0].map_or(0, |stack| stack.count);
+        let label = if value > 1 {
+            value.to_string()
+        } else {
+            String::new()
+        };
+        if text.0 != label {
+            text.0 = label;
         }
     }
 }

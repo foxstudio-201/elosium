@@ -4,12 +4,15 @@ use bevy::{
         ButtonState,
     },
     prelude::*,
+    ui::Pressed,
+    ui_widgets::Button,
     window::{CursorGrabMode, CursorOptions},
 };
 
 use crate::{
     daynight::DayCycle,
-    frontend::{Screen, ScreenState},
+    frontend::{GameRules, Screen, ScreenState},
+    hud::Inventory,
     menu::{bound_key, MenuState, Settings, ACTION_CHAT},
     player::Player,
 };
@@ -57,13 +60,22 @@ struct ChatInput;
 #[derive(Component)]
 struct ChatInputBox;
 
+#[derive(Component)]
+struct ChatSuggestBox;
+
+#[derive(Component)]
+struct SuggestionRow(usize);
+
+#[derive(Component)]
+struct SuggestionText(usize);
+
 pub struct ChatPlugin;
 
 impl Plugin for ChatPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ChatState>()
             .add_systems(Startup, spawn_chat_ui)
-            .add_systems(Update, (chat_input, chat_render));
+            .add_systems(Update, (chat_input, chat_suggestions, chat_render));
     }
 }
 
@@ -81,6 +93,13 @@ fn spawn_chat_ui(
             state.input = "awdkgfkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk".to_string();
         }
         state.open = true;
+        commands.insert_resource(state);
+    }
+    if let Ok(command) = std::env::var("ELOSIUM_CHAT_CMD") {
+        let mut state = ChatState::default();
+        state.input = command;
+        state.open = true;
+        state.closed_esc = false;
         commands.insert_resource(state);
     }
     commands
@@ -148,13 +167,56 @@ fn spawn_chat_ui(
                     },
                     Text::new(""),
                     TextFont {
-                        font: font.into(),
+                        font: font.clone().into(),
                         font_size: FontSize::Px(BASE_FONT),
                         ..default()
                     },
                     TextColor(Color::WHITE),
                     TextLayout::new(Justify::Left, LineBreak::AnyCharacter),
                 ));
+            });
+            root.spawn((
+                ChatSuggestBox,
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: px(0),
+                    bottom: px(34),
+                    width: percent(100),
+                    flex_direction: FlexDirection::Column,
+                    row_gap: px(2),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.02, 0.02, 0.03, 0.9)),
+                GlobalZIndex(32),
+                Visibility::Hidden,
+            ))
+            .with_children(|box_node| {
+                for index in 0..6 {
+                    box_node
+                        .spawn((
+                            SuggestionRow(index),
+                            Button,
+                            crate::ui_theme::ThemeSkip,
+                            Node {
+                                width: percent(100),
+                                padding: UiRect::axes(px(8), px(3)),
+                                ..default()
+                            },
+                            BackgroundColor(Color::srgba(0.04, 0.03, 0.06, 0.92)),
+                        ))
+                        .with_children(|row| {
+                            row.spawn((
+                                SuggestionText(index),
+                                Text::new(""),
+                                TextFont {
+                                    font: font.clone().into(),
+                                    font_size: FontSize::Px(14.0),
+                                    ..default()
+                                },
+                                TextColor(Color::srgb(0.9, 0.86, 0.72)),
+                            ));
+                        });
+                }
             });
         });
 }
@@ -168,14 +230,17 @@ fn chat_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut keyboard: MessageReader<KeyboardInput>,
     mut cursor: Single<&mut CursorOptions>,
-    players: Query<&Player, With<Camera3d>>,
+    mut players: Query<&mut Player, With<Camera3d>>,
     mut day: ResMut<DayCycle>,
+    mut rules: ResMut<GameRules>,
+    mut inventory: ResMut<Inventory>,
+    world: Res<crate::world::VoxelWorld>,
     mut clones: MessageWriter<crate::player_model::SpawnClone>,
 ) {
     let playing = screen.screen == Screen::Playing;
     state.closed_esc = false;
     if !playing {
-        if state.open {
+        if state.open && std::env::var("ELOSIUM_CHAT_CMD").is_err() {
             state.open = false;
             if std::env::var("ELOSIUM_CHAT_TEST").is_err() {
                 state.input.clear();
@@ -192,13 +257,18 @@ fn chat_input(
     }
 
     if !state.open {
-        if !menu.open
-            && !creative.open
-            && keys.just_pressed(bound_key(&settings.keys, ACTION_CHAT))
-        {
-            state.open = true;
-            cursor.visible = true;
-            cursor.grab_mode = CursorGrabMode::None;
+        if !menu.open && !creative.open {
+            if keys.just_pressed(bound_key(&settings.keys, ACTION_CHAT)) {
+                state.open = true;
+                state.input.clear();
+                cursor.visible = true;
+                cursor.grab_mode = CursorGrabMode::None;
+            } else if keys.just_pressed(KeyCode::Slash) {
+                state.open = true;
+                state.input = "/".to_string();
+                cursor.visible = true;
+                cursor.grab_mode = CursorGrabMode::None;
+            }
         }
         for _ in keyboard.read() {}
         return;
@@ -208,6 +278,7 @@ fn chat_input(
         .single()
         .map(|player| (player.name.clone(), player.uuid))
         .unwrap_or_else(|_| ("Player".to_string(), 0));
+    let mut command_result: Option<String> = None;
     let mut close = false;
     for event in keyboard.read() {
         if event.state != ButtonState::Pressed {
@@ -245,12 +316,26 @@ fn chat_input(
                     } else if message == "/whoami" {
                         state.push(format!("{name} · {uuid:032x}"));
                     } else if message.starts_with('/') {
-                        state.push(command_reply(&message, &mut day));
+                        if let Ok(mut player) = players.single_mut() {
+                            let mut ctx = crate::commands::CommandContext {
+                                day: &mut day,
+                                player: &mut player,
+                                rules: &mut rules,
+                                inventory: &mut inventory,
+                                seed: world.seed(),
+                            };
+                            command_result = Some(crate::commands::execute(&message, &mut ctx));
+                        }
                     } else {
                         state.push(format!("<{name}> {message}"));
                     }
                 }
                 close = true;
+            }
+            Key::Tab => {
+                if let Some(first) = crate::commands::suggestions(&state.input).first() {
+                    state.input = first.clone();
+                }
             }
             Key::Escape => {
                 state.input.clear();
@@ -260,6 +345,11 @@ fn chat_input(
             _ => {}
         }
     }
+    if let Some(result) = command_result {
+        if !result.is_empty() {
+            state.push(result);
+        }
+    }
     if close {
         state.open = false;
         cursor.visible = false;
@@ -267,33 +357,7 @@ fn chat_input(
     }
 }
 
-fn command_reply(message: &str, day: &mut DayCycle) -> String {
-    let mut parts = message.split_whitespace();
-    match (parts.next(), parts.next(), parts.next()) {
-        (Some("/help"), _, _) => {
-            "Lệnh: /help · /time set day|night · /time <số> · /clone [tên] · /whoami".to_string()
-        }
-        (Some("/time"), Some("set"), Some(value)) => match value {
-            "day" => {
-                day.time = 0.18;
-                "Đã đặt thời gian ban ngày".to_string()
-            }
-            "night" => {
-                day.time = 0.72;
-                "Đã đặt thời gian ban đêm".to_string()
-            }
-            _ => "Dùng: /time set day|night".to_string(),
-        },
-        (Some("/time"), Some(value), None) => match value.parse::<f32>() {
-            Ok(time) => {
-                day.time = time.rem_euclid(1.0);
-                format!("Đã đặt thời gian {:.2}", day.time)
-            }
-            Err(_) => "Dùng: /time <0..1>".to_string(),
-        },
-        _ => format!("Không rõ lệnh: {message} (thử /help)"),
-    }
-}
+
 
 impl ChatState {
     fn push(&mut self, text: String) {
@@ -301,6 +365,58 @@ impl ChatState {
         if self.lines.len() > 40 {
             let drain = self.lines.len() - 40;
             self.lines.drain(0..drain);
+        }
+    }
+}
+
+fn chat_suggestions(
+    mut state: ResMut<ChatState>,
+    mut box_query: Query<&mut Visibility, With<ChatSuggestBox>>,
+    mut rows: Query<(&SuggestionRow, &mut Visibility), Without<ChatSuggestBox>>,
+    mut texts: Query<(&SuggestionText, &mut Text), Without<SuggestionRow>>,
+    buttons: Query<(Entity, &SuggestionRow, Has<Pressed>), With<Button>>,
+    mut held: Local<std::collections::HashSet<Entity>>,
+) {
+    if !state.open || !state.input.starts_with('/') {
+        for mut visibility in &mut box_query {
+            *visibility = Visibility::Hidden;
+        }
+        for (_, mut visibility) in &mut rows {
+            *visibility = Visibility::Hidden;
+        }
+        held.clear();
+        return;
+    }
+    let list = crate::commands::suggestions(&state.input);
+    for mut visibility in &mut box_query {
+        *visibility = if list.is_empty() {
+            Visibility::Hidden
+        } else {
+            Visibility::Inherited
+        };
+    }
+    for (row, mut visibility) in &mut rows {
+        *visibility = if row.0 < list.len() {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+    }
+    for (text, mut label) in &mut texts {
+        let value = list.get(text.0).cloned().unwrap_or_default();
+        if label.0 != value {
+            label.0 = value;
+        }
+    }
+    for (entity, row, pressed) in &buttons {
+        if pressed {
+            if held.insert(entity) {
+                if let Some(value) = list.get(row.0) {
+                    state.input = value.clone();
+                }
+            }
+        } else {
+            held.remove(&entity);
         }
     }
 }

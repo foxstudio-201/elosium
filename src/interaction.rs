@@ -55,44 +55,39 @@ pub(crate) fn raycast_point(
     None
 }
 
-pub fn spawn_crosshair(
-    commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<StandardMaterial>,
-) {
-    let material = materials.add(StandardMaterial {
-        base_color: Color::WHITE,
-        unlit: true,
-        cull_mode: None,
-        ..default()
-    });
+pub fn spawn_crosshair(commands: &mut Commands, asset_server: &AssetServer) {
     commands.spawn((
         Crosshair,
-        Mesh3d(meshes.add(crosshair_mesh())),
-        MeshMaterial3d(material),
-        Transform::default(),
-        NotShadowCaster,
-        RenderLayers::layer(1),
+        ImageNode {
+            image: asset_server.load("ui/cursor/crosshair.png"),
+            image_mode: NodeImageMode::Stretch,
+            ..default()
+        },
+        Node {
+            position_type: PositionType::Absolute,
+            left: percent(50.0),
+            top: percent(50.0),
+            width: px(20.0),
+            height: px(20.0),
+            margin: UiRect::all(px(-10.0)),
+            ..default()
+        },
+        Visibility::Hidden,
+        GlobalZIndex(30),
     ));
 }
 
 pub fn follow_camera(
     view: Res<ViewMode>,
     hud: Res<HudVisible>,
-    camera: Query<&Transform, (With<Camera3d>, Without<Crosshair>, Without<ReflectionCamera>)>,
-    mut crosshair: Query<(&mut Transform, &mut Visibility), With<Crosshair>>,
+    mut crosshair: Query<&mut Visibility, With<Crosshair>>,
 ) {
-    let Ok(camera) = camera.single() else {
-        return;
-    };
-    if let Ok((mut transform, mut visibility)) = crosshair.single_mut() {
+    if let Ok(mut visibility) = crosshair.single_mut() {
         *visibility = if view.mode == 2 || !hud.0 {
             Visibility::Hidden
         } else {
             Visibility::Inherited
         };
-        transform.translation = camera.translation + camera.rotation * Vec3::NEG_Z * 0.6;
-        transform.rotation = camera.rotation;
     }
 }
 
@@ -277,36 +272,3 @@ pub fn raycast(
     None
 }
 
-fn crosshair_mesh() -> Mesh {
-    let bars = [
-        (-0.0012, -0.010, 0.0012, 0.010),
-        (-0.010, -0.0012, 0.010, 0.0012),
-    ];
-    let mut positions = Vec::new();
-    let mut normals = Vec::new();
-    let mut uvs = Vec::new();
-    let mut indices = Vec::new();
-
-    for (x0, y0, x1, y1) in bars {
-        let base = positions.len() as u32;
-        positions.extend_from_slice(&[
-            [x0, y0, 0.0],
-            [x1, y0, 0.0],
-            [x1, y1, 0.0],
-            [x0, y1, 0.0],
-        ]);
-        normals.extend_from_slice(&[[0.0, 0.0, 1.0]; 4]);
-        uvs.extend_from_slice(&[[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]]);
-        indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
-    }
-
-    let mut mesh = Mesh::new(
-        PrimitiveTopology::TriangleList,
-        RenderAssetUsages::default(),
-    );
-    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
-    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
-    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
-    mesh.insert_indices(Indices::U32(indices));
-    mesh
-}
