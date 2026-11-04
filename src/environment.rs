@@ -18,6 +18,9 @@ const AIR_VOLUME: Color = Color::srgb(0.78, 0.85, 0.96);
 #[derive(Component)]
 pub struct GlobalFogVolume;
 
+#[derive(Component)]
+pub struct WaterCeiling;
+
 #[derive(Resource)]
 pub struct EnvironmentState {
     pub underwater: bool,
@@ -49,6 +52,10 @@ pub fn update_environment_effects(
     settings: Res<Settings>,
     mut clear: ResMut<ClearColor>,
     mut state: ResMut<EnvironmentState>,
+    mut ceiling: Query<
+        (&mut Transform, &mut Visibility),
+        (With<WaterCeiling>, Without<Camera3d>, Without<GlobalFogVolume>),
+    >,
 ) {
     let Ok((transform, mut fog, volumetric)) = camera.single_mut() else {
         return;
@@ -92,6 +99,15 @@ pub fn update_environment_effects(
             0.0,
             0.0,
         );
+    }
+
+    for (mut transform, mut visibility) in &mut ceiling {
+        transform.translation = Vec3::new(eye.x, crate::world::WATER_SURFACE_HEIGHT - 0.06, eye.z);
+        *visibility = if underwater {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
     }
 
     if let Ok((mut fog_volume, mut fog_transform)) = volume.single_mut() {
