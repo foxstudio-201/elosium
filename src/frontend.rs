@@ -634,6 +634,14 @@ pub fn spawn_screens(
             ))
             .with_children(|panel| {
                 panel.spawn(text(&font, "Tạo thế giới mới", 24.0, WHITE));
+                panel.spawn((
+                    crate::ui_theme::sliced(theme.divider.clone(), 8.0),
+                    Node {
+                        width: percent(100),
+                        height: px(10),
+                        ..default()
+                    },
+                ));
                 field_row(panel, &font, "Tên thế giới", 0, &CreateForm::default().name);
                 field_row(panel, &font, "Seed", 1, &CreateForm::default().seed);
                 panel.spawn(text(&font, "Chế độ chơi", 14.0, MUTED));

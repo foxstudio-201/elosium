@@ -88,7 +88,7 @@ pub fn execute(message: &str, ctx: &mut CommandContext) -> String {
         return String::new();
     };
     match command {
-        "/help" => "Lệnh: /gamemode /time /tp /give /setblock /clear /seed /clone /whoami".to_string(),
+        "/help" => "Lệnh: /gamemode /time /tp /give /setblock /fill /clear /seed /clone /whoami".to_string(),
         "/seed" => format!("Seed: {}", ctx.seed),
         "/gamemode" => {
             let Some(value) = parts.next() else {
@@ -172,6 +172,45 @@ pub fn execute(message: &str, ctx: &mut CommandContext) -> String {
             ctx.world.set_block_recorded(x, y, z, block);
             ctx.renderer.mark_block_dirty(x, y, z);
             format!("Đã đặt {name} tại {x} {y} {z}")
+        }
+        "/fill" => {
+            let mut values = [0i32; 6];
+            let mut count = 0;
+            while count < 6 {
+                let Some(part) = parts.next() else {
+                    return "Dùng: /fill <x1> <y1> <z1> <x2> <y2> <z2> <block>".to_string();
+                };
+                let Ok(value) = part.parse::<i32>() else {
+                    return "Dùng: /fill <x1> <y1> <z1> <x2> <y2> <z2> <block>".to_string();
+                };
+                values[count] = value;
+                count += 1;
+            }
+            let Some(name) = parts.next() else {
+                return "Dùng: /fill <x1> <y1> <z1> <x2> <y2> <z2> <block>".to_string();
+            };
+            let Some(block) = block_from_name(name) else {
+                return format!("Không có block: {name}");
+            };
+            let x0 = values[0].min(values[3]);
+            let x1 = values[0].max(values[3]);
+            let y0 = values[1].min(values[4]);
+            let y1 = values[1].max(values[4]);
+            let z0 = values[2].min(values[5]);
+            let z1 = values[2].max(values[5]);
+            let volume = (x1 - x0 + 1) as i64 * (y1 - y0 + 1) as i64 * (z1 - z0 + 1) as i64;
+            if volume > 8192 {
+                return "Khối quá lớn (tối đa 8192 block)".to_string();
+            }
+            for x in x0..=x1 {
+                for y in y0..=y1 {
+                    for z in z0..=z1 {
+                        ctx.world.set_block_recorded(x, y, z, block);
+                        ctx.renderer.mark_block_dirty(x, y, z);
+                    }
+                }
+            }
+            format!("Đã đặt {name} cho {volume} block")
         }
         "/clear" => {
             for slot in &mut ctx.inventory.slots {
@@ -260,7 +299,7 @@ pub fn suggestions(input: &str) -> Vec<String> {
         }
         return out.into_iter().take(8).collect();
     }
-    let mut out: Vec<String> = ["/help", "/gamemode", "/time", "/tp", "/give", "/setblock", "/clear", "/seed"]
+    let mut out: Vec<String> = ["/help", "/gamemode", "/time", "/tp", "/give", "/setblock", "/fill", "/clear", "/seed"]
         .iter()
         .filter(|command| command.starts_with(head))
         .map(|command| (*command).to_string())

@@ -162,6 +162,15 @@ fn spawn_creative(
                     });
 
                 panel.spawn((
+                    crate::ui_theme::sliced(theme.divider.clone(), 8.0),
+                    Node {
+                        width: percent(100.0),
+                        height: px(10.0),
+                        ..default()
+                    },
+                ));
+
+                panel.spawn((
                     CreativeSearchText,
                     Text::new("Tìm: "),
                     TextFont {
