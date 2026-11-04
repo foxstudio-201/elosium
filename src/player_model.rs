@@ -185,12 +185,16 @@ fn skin_material(
     asset_server: &AssetServer,
 ) -> Handle<StandardMaterial> {
     materials.add(StandardMaterial {
-        base_color_texture: Some(asset_server.load("textures/player_skin.png")),
+        base_color_texture: Some(asset_server.load(skin_path())),
         perceptual_roughness: 1.0,
         metallic: 0.0,
         cull_mode: None,
         ..default()
     })
+}
+
+fn skin_path() -> String {
+    std::env::var("ELOSIUM_SKIN").unwrap_or_else(|_| "textures/player_skin.png".to_string())
 }
 
 fn spawn_model_parts(
@@ -868,9 +872,9 @@ fn overlay_texture(part: PlayerPart) -> Option<(Vec2, Vec2)> {
         PlayerPart::Head => Some((Vec2::new(32.0, 0.0), Vec2::new(32.0, 0.0))),
         PlayerPart::Body => Some((Vec2::new(16.0, 32.0), Vec2::new(16.0, 32.0))),
         PlayerPart::ArmRight => Some((Vec2::new(40.0, 32.0), Vec2::new(40.0, 32.0))),
-        PlayerPart::ArmLeft => Some((Vec2::new(48.0, 32.0), Vec2::new(48.0, 32.0))),
+        PlayerPart::ArmLeft => Some((Vec2::new(48.0, 48.0), Vec2::new(48.0, 48.0))),
         PlayerPart::LegRight => Some((Vec2::new(0.0, 32.0), Vec2::new(0.0, 32.0))),
-        PlayerPart::LegLeft => Some((Vec2::new(16.0, 32.0), Vec2::new(16.0, 32.0))),
+        PlayerPart::LegLeft => Some((Vec2::new(0.0, 48.0), Vec2::new(0.0, 48.0))),
     }
 }
 
@@ -879,7 +883,7 @@ fn overlay_material(
     asset_server: &AssetServer,
 ) -> Handle<StandardMaterial> {
     materials.add(StandardMaterial {
-        base_color_texture: Some(asset_server.load("textures/player_skin.png")),
+        base_color_texture: Some(asset_server.load(skin_path())),
         perceptual_roughness: 1.0,
         metallic: 0.0,
         cull_mode: None,

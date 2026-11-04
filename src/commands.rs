@@ -184,15 +184,16 @@ pub fn execute(message: &str, ctx: &mut CommandContext) -> String {
 }
 
 pub fn suggestions(input: &str) -> Vec<String> {
+    let trailing_space = input.ends_with(' ');
     let trimmed = input.trim_end();
     if !trimmed.starts_with('/') {
         return Vec::new();
     }
     let mut words = trimmed.split_whitespace();
     let head = words.next().unwrap_or("");
-    if trimmed.ends_with(' ') || words.next().is_some() {
+    if trailing_space || words.next().is_some() {
         let args: Vec<&str> = trimmed.split_whitespace().skip(1).collect();
-        let partial = if trimmed.ends_with(' ') {
+        let partial = if trailing_space {
             ""
         } else {
             args.last().copied().unwrap_or("")
@@ -220,17 +221,14 @@ pub fn suggestions(input: &str) -> Vec<String> {
                             push(word, " ");
                         }
                     }
-                } else if args.len() == 2 {
+                } else if args.first() == Some(&"set") {
                     for word in TIMES {
                         if word.starts_with(partial) {
                             push(&format!("set {word}"), "");
                         }
                     }
-                    for word in TIMES {
-                        if format!("set {word}").starts_with(partial) {
-                            out.push(format!("{prefix}set {word}"));
-                        }
-                    }
+                } else if args.first() == Some(&"add") {
+                    out.push(format!("{prefix}add <0..1>"));
                 }
                 out.sort();
                 out.dedup();
