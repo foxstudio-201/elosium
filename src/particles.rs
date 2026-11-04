@@ -48,7 +48,8 @@ pub struct Debris {
 
 #[derive(Component)]
 pub struct BlockDrop {
-    block: Block,
+    pub block: Block,
+    pub count: u32,
     velocity: Vec3,
     half: f32,
     age: f32,
@@ -87,7 +88,7 @@ impl Plugin for ParticlePlugin {
                     spawn_break_debris,
                     spawn_sprint_dust,
                     update_debris,
-                    update_drops,
+                    (update_drops, merge_drops).chain(),
                     break_test,
                 ),
             );
@@ -374,6 +375,7 @@ fn spawn_break_debris(
             Transform::from_translation(center).with_scale(Vec3::splat(drop_size)),
             BlockDrop {
                 block,
+                count: 1,
                 velocity,
                 half: drop_size * 0.5,
                 age: 0.0,
@@ -467,10 +469,10 @@ fn step_physics(
     dt: f32,
 ) -> (Vec3, Vec3, bool) {
     if !grounded {
-        velocity.y -= GRAVITY * dt;
         let drag = (1.0 - DRAG * dt).clamp(0.0, 1.0);
         velocity *= drag;
     }
+    velocity.y -= GRAVITY * dt;
     if velocity.x != 0.0 {
         position.x += velocity.x * dt;
         if overlaps_solid(world, position, half) {
@@ -485,7 +487,8 @@ fn step_physics(
             velocity.z = -velocity.z * RESTITUTION;
         }
     }
-    let mut grounded = grounded;
+    let mut grounded = false;
+    let _ = grounded;
     if velocity.y != 0.0 {
         position.y += velocity.y * dt;
         if overlaps_solid(world, position, half) {
@@ -570,11 +573,76 @@ fn update_drops(
         drop.grounded = grounded;
         transform.translation = position;
         if let Some(player) = player {
-            if drop.age > 0.35 && position.distance(player.body) < 1.7 {
-                if inventory.add_block(drop.block) {
+            if drop.age > 0.5 && touches_player(player, position, drop.half) {
+                let remaining = inventory.add_blocks(drop.block, drop.count);
+                if remaining == 0 {
                     commands.entity(entity).despawn();
+                } else {
+                    drop.count = remaining;
                 }
             }
+        }
+    }
+}
+
+fn touches_player(player: &Player, position: Vec3, half: f32) -> bool {
+    let min = player.feet - Vec3::new(0.3, 0.0, 0.3);
+    let max = player.feet + Vec3::new(0.3, 1.8, 0.3);
+    let min = min - Vec3::new(1.0, 0.5, 1.0);
+    let max = max + Vec3::new(1.0, 0.5, 1.0);
+    let item_min = position - Vec3::splat(half);
+    let item_max = position + Vec3::splat(half);
+    item_min.x < max.x
+        && item_max.x > min.x
+        && item_min.y < max.y
+        && item_max.y > min.y
+        && item_min.z < max.z
+        && item_max.z > min.z
+}
+
+fn merge_drops(
+    mut commands: Commands,
+    mut drops: Query<(Entity, &Transform, &mut BlockDrop)>,
+) {
+    let list: Vec<(Entity, Vec3, Block, u32)> = drops
+        .iter()
+        .map(|(entity, transform, drop)| (entity, transform.translation, drop.block, drop.count))
+        .collect();
+    let mut removed: Vec<Entity> = Vec::new();
+    let mut counts: Vec<u32> = list.iter().map(|item| item.3).collect();
+    for i in 0..list.len() {
+        if removed.contains(&list[i].0) {
+            continue;
+        }
+        for j in (i + 1)..list.len() {
+            if removed.contains(&list[j].0) || list[i].2 != list[j].2 {
+                continue;
+            }
+            if list[i].1.distance(list[j].1) > 0.6 {
+                continue;
+            }
+            let total = counts[i] + counts[j];
+            if total > 64 {
+                continue;
+            }
+            counts[i] = total;
+            removed.push(list[j].0);
+        }
+    }
+    if removed.is_empty() {
+        return;
+    }
+    for (entity, _, mut drop) in &mut drops {
+        if removed.contains(&entity) {
+            commands.entity(entity).despawn();
+        }
+    }
+    for (index, (entity, _, _, _)) in list.iter().enumerate() {
+        if removed.contains(entity) {
+            continue;
+        }
+        if let Ok((_, _, mut drop)) = drops.get_mut(*entity) {
+            drop.count = counts[index];
         }
     }
 }
