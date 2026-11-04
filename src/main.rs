@@ -257,8 +257,7 @@ fn setup(
     clouds::spawn_clouds(&mut commands, &mut meshes, &handles);
     {
         let ceiling_material = standard_materials.add(StandardMaterial {
-            base_color: Color::srgb(0.07, 0.24, 0.32),
-            unlit: true,
+            base_color: Color::srgb(0.12, 0.34, 0.42),
             cull_mode: None,
             ..default()
         });
