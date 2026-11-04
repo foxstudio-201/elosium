@@ -39,12 +39,8 @@ pub enum PlayerPart {
     Body,
     ArmLeft,
     ArmRight,
-    ForearmLeft,
-    ForearmRight,
     LegLeft,
     LegRight,
-    ShinLeft,
-    ShinRight,
 }
 
 #[derive(Component)]
@@ -76,7 +72,7 @@ impl LimbBox {
 
 #[derive(Resource, Default)]
 pub struct LimbContacts {
-    pub boxes: [LimbBox; 10],
+    pub boxes: [LimbBox; 6],
     pub hands: [Vec3; 2],
     pub feet: [Vec3; 2],
 }
@@ -85,12 +81,8 @@ const SLOT_HEAD: usize = 0;
 const SLOT_BODY: usize = 1;
 const SLOT_ARM_LEFT: usize = 2;
 const SLOT_ARM_RIGHT: usize = 3;
-const SLOT_FOREARM_LEFT: usize = 4;
-const SLOT_FOREARM_RIGHT: usize = 5;
-const SLOT_LEG_LEFT: usize = 6;
-const SLOT_LEG_RIGHT: usize = 7;
-const SLOT_SHIN_LEFT: usize = 8;
-const SLOT_SHIN_RIGHT: usize = 9;
+const SLOT_LEG_LEFT: usize = 4;
+const SLOT_LEG_RIGHT: usize = 5;
 
 fn part_slot(part: PlayerPart) -> usize {
     match part {
@@ -98,12 +90,8 @@ fn part_slot(part: PlayerPart) -> usize {
         PlayerPart::Body => SLOT_BODY,
         PlayerPart::ArmLeft => SLOT_ARM_LEFT,
         PlayerPart::ArmRight => SLOT_ARM_RIGHT,
-        PlayerPart::ForearmLeft => SLOT_FOREARM_LEFT,
-        PlayerPart::ForearmRight => SLOT_FOREARM_RIGHT,
         PlayerPart::LegLeft => SLOT_LEG_LEFT,
         PlayerPart::LegRight => SLOT_LEG_RIGHT,
-        PlayerPart::ShinLeft => SLOT_SHIN_LEFT,
-        PlayerPart::ShinRight => SLOT_SHIN_RIGHT,
     }
 }
 
@@ -113,165 +101,6 @@ fn part_bounds(part: PlayerPart) -> (Vec3, Vec3) {
         .find(|(kind, _, _, _, _, _)| *kind == part)
         .map(|(_, _, min, max, _, _)| (*min, *max))
         .unwrap_or((Vec3::ZERO, Vec3::ZERO))
-}
-
-fn clamp_hand_target(
-    world: &crate::world::VoxelWorld,
-    shoulder: Vec3,
-    target: Vec3,
-    root_rotation: Quat,
-    root_position: Vec3,
-    side: f32,
-) -> Vec3 {
-    let to_local = |point: Vec3| root_rotation.inverse() * (point - root_position);
-    let to_world = |point: Vec3| root_position + root_rotation * point;
-    let shoulder_local = to_local(shoulder);
-    let mut local = to_local(target);
-    local.x = side * local.x.abs().max(0.30);
-    local.y = local.y.clamp(0.55, 1.65);
-    local.z = local.z.clamp(-0.62, 0.35 * local.x.abs());
-    let offset = local - shoulder_local;
-    let reach = offset
-        .length()
-        .clamp(0.26, (ARM_LENGTH * 2.0 - 0.4) * MODEL_SCALE);
-    local = shoulder_local + offset.normalize_or_zero() * reach;
-    let mut world_target = to_world(local);
-    let direction = (world_target - shoulder).normalize_or_zero();
-    let distance = (world_target - shoulder).length();
-    let steps = 16;
-    let mut previous = shoulder;
-    for step in 1..=steps {
-        let sample = shoulder + direction * (distance * step as f32 / steps as f32);
-        let block = world.get_block(
-            sample.x.floor() as i32,
-            sample.y.floor() as i32,
-            sample.z.floor() as i32,
-        );
-        if block.is_solid() {
-            world_target = previous + direction * 0.01;
-            break;
-        }
-        previous = sample;
-    }
-    world_target
-}
-
-fn foot_support(
-    world: &crate::world::VoxelWorld,
-    foot: Vec3,
-    feet: Vec3,
-) -> (f32, bool) {
-    let x = foot.x.floor() as i32;
-    let z = foot.z.floor() as i32;
-    let base = feet.y.floor() as i32;
-    let mut support = feet.y;
-    for y in (base - 1..=base + 1).rev() {
-        let block = world.get_block(x, y, z);
-        if block.is_solid() {
-            let surface = y as f32 + 1.0;
-            if surface <= feet.y + 0.55 {
-                support = support.max(surface);
-            }
-            break;
-        }
-    }
-    let plant = world.get_block(x, base, z).is_plant();
-    if plant {
-        support = support.max(base as f32 + 0.3);
-    }
-    (support, plant)
-}
-
-fn aim_bone(direction: Vec3, reference: Vec3) -> Quat {
-    let y = -direction.normalize_or_zero();
-    if y.length_squared() < 1.0e-6 {
-        return Quat::IDENTITY;
-    }
-    let mut z = reference - y * reference.dot(y);
-    if z.length_squared() < 1.0e-6 {
-        z = if y.y.abs() < 0.9 {
-            Vec3::Y.cross(y)
-        } else {
-            Vec3::X.cross(y)
-        };
-    }
-    let z = z.normalize_or_zero();
-    let x = y.cross(z).normalize_or_zero();
-    Quat::from_mat3(&Mat3::from_cols(x, y, z))
-}
-
-fn solve_two_bone(
-    shoulder: Vec3,
-    target: Vec3,
-    upper: f32,
-    lower: f32,
-    pole: Vec3,
-) -> Option<(Vec3, Vec3)> {
-    let delta = target - shoulder;
-    let raw = delta.length();
-    if raw < 1.0e-4 {
-        return None;
-    }
-    let direction = delta / raw;
-    let reach = raw.clamp((upper - lower).abs() + 0.02, upper + lower - 0.02);
-    let along = (upper * upper - lower * lower + reach * reach) / (2.0 * reach);
-    let height = (upper * upper - along * along).max(0.0).sqrt();
-    let pole_dir = (pole - direction * pole.dot(direction)).normalize_or_zero();
-    let elbow = shoulder + direction * along + pole_dir * height;
-    let hand = shoulder + direction * reach;
-    Some((elbow, hand))
-}
-
-fn hand_contact_target(
-    world: &crate::world::VoxelWorld,
-    shoulder: Vec3,
-    feet: Vec3,
-    side: Vec3,
-    moving: bool,
-) -> Option<(Vec3, f32)> {
-    let base = shoulder.floor();
-    let mut solid: Option<(f32, Vec3)> = None;
-    let mut plant: Option<(f32, Vec3)> = None;
-    for dx in -1..=1 {
-        for dy in -1..=1 {
-            for dz in -1..=1 {
-                let x = base.x as i32 + dx;
-                let y = base.y as i32 + dy;
-                let z = base.z as i32 + dz;
-                let block = world.get_block(x, y, z);
-                if !block.is_solid() && !(moving && block.is_plant()) {
-                    continue;
-                }
-                let min = Vec3::new(x as f32, y as f32, z as f32);
-                let max = min + Vec3::ONE;
-                let nearest = shoulder.clamp(min, max);
-                let offset = nearest - shoulder;
-                let distance = offset.length();
-                if distance < 0.01 || distance > 0.56 {
-                    continue;
-                }
-                let lateral = offset.normalize_or_zero().dot(side);
-                if lateral < 0.15 {
-                    continue;
-                }
-                let point = nearest + offset.normalize_or_zero() * 0.02;
-                if block.is_solid() {
-                    let top = y as f32 + 1.0;
-                    let hand_band = nearest.y >= feet.y + 0.5 && nearest.y <= feet.y + 1.75;
-                    let step = top >= feet.y + 0.95 && top <= feet.y + 2.0;
-                    if (hand_band || step) && solid.map_or(true, |(best, _)| distance < best) {
-                        solid = Some((distance, point));
-                    }
-                } else if moving && plant.map_or(true, |(best, _)| distance < best) {
-                    plant = Some((distance, point));
-                }
-            }
-        }
-    }
-    if let Some((_, point)) = solid {
-        return Some((point, 1.0));
-    }
-    plant.map(|(_, point)| (point, 0.55))
 }
 
 #[derive(Component)]
@@ -300,8 +129,7 @@ pub struct SpawnClone {
     pub name: String,
 }
 
-const ARM_LENGTH: f32 = 5.0;
-const PARTS: [(PlayerPart, Vec3, Vec3, Vec3, Vec2, Vec2); 10] = [
+const PARTS: [(PlayerPart, Vec3, Vec3, Vec3, Vec2, Vec2); 6] = [
     (
         PlayerPart::Head,
         Vec3::new(0.0, 24.0, 0.0),
@@ -321,7 +149,7 @@ const PARTS: [(PlayerPart, Vec3, Vec3, Vec3, Vec2, Vec2); 10] = [
     (
         PlayerPart::ArmRight,
         Vec3::new(6.0, 22.0, 0.0),
-        Vec3::new(-2.0, -ARM_LENGTH, -2.0),
+        Vec3::new(-2.0, -10.0, -2.0),
         Vec3::new(2.0, 2.0, 2.0),
         Vec2::new(40.0, 16.0),
         Vec2::new(40.0, 16.0),
@@ -329,31 +157,15 @@ const PARTS: [(PlayerPart, Vec3, Vec3, Vec3, Vec2, Vec2); 10] = [
     (
         PlayerPart::ArmLeft,
         Vec3::new(-6.0, 22.0, 0.0),
-        Vec3::new(-2.0, -ARM_LENGTH, -2.0),
+        Vec3::new(-2.0, -10.0, -2.0),
         Vec3::new(2.0, 2.0, 2.0),
         Vec2::new(32.0, 48.0),
         Vec2::new(32.0, 48.0),
     ),
     (
-        PlayerPart::ForearmRight,
-        Vec3::new(0.0, -ARM_LENGTH, 0.0),
-        Vec3::new(-1.98, -ARM_LENGTH, -1.98),
-        Vec3::new(1.98, 1.0, 1.98),
-        Vec2::new(40.0, 21.0),
-        Vec2::new(40.0, 24.0),
-    ),
-    (
-        PlayerPart::ForearmLeft,
-        Vec3::new(0.0, -ARM_LENGTH, 0.0),
-        Vec3::new(-1.98, -ARM_LENGTH, -1.98),
-        Vec3::new(1.98, 1.0, 1.98),
-        Vec2::new(32.0, 53.0),
-        Vec2::new(32.0, 56.0),
-    ),
-    (
         PlayerPart::LegRight,
         Vec3::new(2.0, 12.0, 0.0),
-        Vec3::new(-2.0, -6.0, -2.0),
+        Vec3::new(-2.0, -12.0, -2.0),
         Vec3::new(2.0, 0.0, 2.0),
         Vec2::new(0.0, 16.0),
         Vec2::new(0.0, 16.0),
@@ -361,25 +173,9 @@ const PARTS: [(PlayerPart, Vec3, Vec3, Vec3, Vec2, Vec2); 10] = [
     (
         PlayerPart::LegLeft,
         Vec3::new(-2.0, 12.0, 0.0),
-        Vec3::new(-2.0, -6.0, -2.0),
+        Vec3::new(-2.0, -12.0, -2.0),
         Vec3::new(2.0, 0.0, 2.0),
         Vec2::new(16.0, 48.0),
-        Vec2::new(16.0, 48.0),
-    ),
-    (
-        PlayerPart::ShinRight,
-        Vec3::new(0.0, -6.0, 0.0),
-        Vec3::new(-1.98, -6.0, -1.98),
-        Vec3::new(1.98, 1.0, 1.98),
-        Vec2::new(0.0, 21.0),
-        Vec2::new(0.0, 16.0),
-    ),
-    (
-        PlayerPart::ShinLeft,
-        Vec3::new(0.0, -6.0, 0.0),
-        Vec3::new(-1.98, -6.0, -1.98),
-        Vec3::new(1.98, 1.0, 1.98),
-        Vec2::new(16.0, 53.0),
         Vec2::new(16.0, 48.0),
     ),
 ];
@@ -407,7 +203,7 @@ fn spawn_model_parts(
     clone: bool,
     owner: Option<Entity>,
 ) {
-    let mut ids = [Entity::PLACEHOLDER; 10];
+    let mut ids = [Entity::PLACEHOLDER; 6];
     for (kind, pivot, min, max, texture, cap) in PARTS {
         let mut entity = commands.spawn((
             kind,
@@ -447,25 +243,7 @@ fn spawn_model_parts(
             let overlay_id = overlay_entity.id();
             commands.entity(id).add_child(overlay_id);
         }
-        if !matches!(
-            kind,
-            PlayerPart::ForearmLeft
-                | PlayerPart::ForearmRight
-                | PlayerPart::ShinLeft
-                | PlayerPart::ShinRight
-        ) {
-            commands.entity(root).add_child(id);
-        }
-    }
-    for (forearm, arm) in [
-        (SLOT_FOREARM_LEFT, SLOT_ARM_LEFT),
-        (SLOT_FOREARM_RIGHT, SLOT_ARM_RIGHT),
-        (SLOT_SHIN_LEFT, SLOT_LEG_LEFT),
-        (SLOT_SHIN_RIGHT, SLOT_LEG_RIGHT),
-    ] {
-        if ids[forearm] != Entity::PLACEHOLDER && ids[arm] != Entity::PLACEHOLDER {
-            commands.entity(ids[arm]).add_child(ids[forearm]);
-        }
+        commands.entity(root).add_child(id);
     }
 }
 
@@ -737,7 +515,7 @@ pub fn push_player_from_clones(
         let clone_half = CLONE_WIDTH * 0.5;
         let clone_min = clone_feet - Vec3::new(clone_half, 0.0, clone_half);
         let clone_max = clone_feet + Vec3::new(clone_half, CLONE_HEIGHT, clone_half);
-        for slot in 2..10 {
+        for slot in 2..6 {
             let limb = contacts.boxes[slot];
             if !limb.overlaps(clone_min, clone_max) {
                 continue;
@@ -889,13 +667,9 @@ pub fn animate_first_person_arm(
 
 pub fn animate_player_model(
     time: Res<Time>,
-    view: Res<ViewMode>,
-    world: Res<crate::world::VoxelWorld>,
     player: Query<&Player, With<Camera3d>>,
     mut swing: Local<f32>,
     mut debug_frame: Local<u32>,
-    mut left_reach: Local<f32>,
-    mut right_reach: Local<f32>,
     mut contacts: ResMut<LimbContacts>,
     mut root: Query<
         (&mut Transform, &mut Visibility),
@@ -935,8 +709,9 @@ pub fn animate_player_model(
         (speed / 4.3).clamp(0.0, 1.0)
     };
 
-    let leg = swing.cos() * 1.4 * amount;
-    let arm = swing.cos() * 1.4 * amount * 0.9;
+    let stride = swing.cos();
+    let leg = stride * 1.4 * amount;
+    let arm = stride * 1.4 * amount * 0.88;
     *debug_frame = debug_frame.wrapping_add(1);
     if std::env::var("ELOSIUM_ANIM_DEBUG").is_ok() && *debug_frame % 60 == 0 {
         println!(
@@ -950,201 +725,78 @@ pub fn animate_player_model(
     } else {
         0.0
     };
+    let airborne = if !player.on_ground && player.pose != PlayerPose::Swimming {
+        1.0
+    } else {
+        0.0
+    };
     let head_pitch = player.pitch;
     let mut relative = player.yaw - player.body_yaw;
     relative = (relative + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU)
         - std::f32::consts::PI;
     relative = relative.clamp(-1.31, 1.31);
-    let idle = (time.elapsed_secs() * 1.6).sin() * 0.02;
+    let breath = (time.elapsed_secs() * 1.5).sin() * 0.02;
     let attack = if player.swinging {
         (player.swing.clamp(0.0, 1.0).sqrt() * std::f32::consts::PI).sin() * 1.2
     } else {
         0.0
     };
-    let bob = (*swing * 2.0).cos().abs() * 0.02 * amount;
+    let bob = (*swing * 2.0).cos().abs() * 0.02 * amount + breath * 0.3;
     root_transform.translation.y += bob;
 
-    let feet = player.render_feet;
-    let interactive = view.mode != 0;
     let arm_offset = Vec3::new(0.0, -3.2 * crouch, 0.0);
-    let right = Vec3::new(player.body_yaw.cos(), 0.0, -player.body_yaw.sin());
-    let mut ik_upper = [Quat::IDENTITY; 2];
-    let mut ik_fore = [Quat::IDENTITY; 2];
-    let mut ik_target = [0.0f32; 2];
-    if interactive {
-        for (index, sign) in [-1.0f32, 1.0].into_iter().enumerate() {
-            let side = right * sign;
-            let shoulder_pivot =
-                Vec3::new(if sign < 0.0 { -6.0 } else { 6.0 }, 22.0, 0.0) + arm_offset;
-            let shoulder = root_transform.transform_point(shoulder_pivot);
-            if let Some((point, weight)) =
-                hand_contact_target(&world, shoulder, feet, side, speed > 0.6)
-            {
-                let point = clamp_hand_target(
-                    &world,
-                    shoulder,
-                    point,
-                    root_transform.rotation,
-                    root_transform.translation,
-                    sign,
-                );
-                let local_target =
-                    root_transform.rotation.inverse() * (point - root_transform.translation)
-                        / MODEL_SCALE;
-                let pole = Vec3::new(sign * 0.35, -0.85, 0.4);
-                if let Some((elbow, hand)) =
-                    solve_two_bone(shoulder_pivot, local_target, ARM_LENGTH, ARM_LENGTH, pole)
-                {
-                    let upper = aim_bone(
-                        (elbow - shoulder_pivot).normalize_or_zero(),
-                        Vec3::Z,
-                    );
-                    let lower = aim_bone((hand - elbow).normalize_or_zero(), Vec3::Z);
-                    ik_upper[index] = upper;
-                    ik_fore[index] = upper.inverse() * lower;
-                    ik_target[index] = weight;
-                }
-            }
-        }
-    }
-    let reach_blend = 1.0 - (-delta * 9.0).exp();
-    *left_reach += (ik_target[0] - *left_reach) * reach_blend;
-    *right_reach += (ik_target[1] - *right_reach) * reach_blend;
-    if std::env::var("ELOSIUM_ANIM_DEBUG").is_ok() && *debug_frame % 60 == 0 {
-        println!(
-            "limb ik=({:.2},{:.2}) feet={:?} yaw={:.2}",
-            *left_reach, *right_reach, feet, player.body_yaw
-        );
-    }
     let leg_offset = Vec3::new(0.0, -0.2 * crouch, 4.0 * crouch);
-    let mut leg_upper = [Quat::IDENTITY; 2];
-    let mut leg_lower = [Quat::IDENTITY; 2];
-    let mut leg_ik = [false; 2];
-    if player.on_ground && player.pose == PlayerPose::Standing {
-        for (index, sign) in [-1.0f32, 1.0].into_iter().enumerate() {
-            let foot_world = feet + root_transform.rotation * Vec3::new(sign * 2.0, 0.0, 0.0) * MODEL_SCALE;
-            let (support, plant) = foot_support(&world, foot_world, feet);
-            if support <= feet.y + 0.02 && !plant {
-                continue;
-            }
-            let target_y = (support - feet.y) / MODEL_SCALE;
-            let hip = Vec3::new(sign * 2.0, 12.0, 0.0) + leg_offset;
-            let target = Vec3::new(sign * 2.0, target_y, 0.0);
-            let pole = Vec3::new(sign * 0.15, 0.0, -1.0);
-            if let Some((knee, _)) = solve_two_bone(hip, target, 6.0, 6.0, pole) {
-                let upper = aim_bone((knee - hip).normalize_or_zero(), Vec3::Z);
-                let lower = aim_bone((target - knee).normalize_or_zero(), Vec3::Z);
-                leg_upper[index] = upper;
-                leg_lower[index] = upper.inverse() * lower;
-                leg_ik[index] = true;
-            }
-        }
-    }
-    let applied_leg = [
-        if leg_ik[0] {
-            leg_upper[0]
-        } else {
-            Quat::from_rotation_x(-leg)
-        },
-        if leg_ik[1] {
-            leg_upper[1]
-        } else {
-            Quat::from_rotation_x(leg)
-        },
-    ];
-    let applied_shin = [
-        Quat::IDENTITY.slerp(leg_lower[0], if leg_ik[0] { 1.0 } else { 0.0 }),
-        Quat::IDENTITY.slerp(leg_lower[1], if leg_ik[1] { 1.0 } else { 0.0 }),
-    ];
     let root_tf = Transform {
         translation: root_transform.translation,
         rotation: root_transform.rotation,
         scale: root_transform.scale,
     };
-    let applied_upper = [
-        Quat::from_rotation_x(arm - 0.4 * crouch + idle + attack * 0.3)
-            .slerp(ik_upper[0], *left_reach),
-        Quat::from_rotation_x(-arm - 0.4 * crouch - idle + attack)
-            .slerp(ik_upper[1], *right_reach),
-    ];
-    let applied_fore = [
-        Quat::IDENTITY.slerp(ik_fore[0], *left_reach),
-        Quat::IDENTITY.slerp(ik_fore[1], *right_reach),
-    ];
 
     for (kind, pivot, mut transform, limb) in &mut parts {
         let (rotation, offset) = match kind {
             PlayerPart::Head => (
-                Quat::from_rotation_y(relative) * Quat::from_rotation_x(head_pitch),
+                Quat::from_rotation_y(relative)
+                    * Quat::from_rotation_x(head_pitch + breath * 0.5),
                 Vec3::new(0.0, -4.2 * crouch, 0.0),
             ),
             PlayerPart::Body => (
-                Quat::from_rotation_x(-0.5 * crouch - sprint * 0.08),
+                Quat::from_rotation_x(-0.5 * crouch - sprint * 0.08 + breath * 0.4),
                 Vec3::new(0.0, -3.2 * crouch, 0.0),
             ),
-            PlayerPart::ArmLeft => (applied_upper[0], arm_offset),
-            PlayerPart::ArmRight => (applied_upper[1], arm_offset),
-            PlayerPart::ForearmLeft => (applied_fore[0], Vec3::ZERO),
-            PlayerPart::ForearmRight => (applied_fore[1], Vec3::ZERO),
-            PlayerPart::LegLeft => (applied_leg[0], leg_offset),
-            PlayerPart::LegRight => (applied_leg[1], leg_offset),
-            PlayerPart::ShinLeft => (applied_shin[0], Vec3::ZERO),
-            PlayerPart::ShinRight => (applied_shin[1], Vec3::ZERO),
+            PlayerPart::ArmLeft => (
+                Quat::from_rotation_z(-(0.35 * airborne))
+                    * Quat::from_rotation_x(
+                        arm - 0.4 * crouch + breath + attack * 0.3 - airborne * 0.4,
+                    ),
+                arm_offset,
+            ),
+            PlayerPart::ArmRight => (
+                Quat::from_rotation_z(0.35 * airborne)
+                    * Quat::from_rotation_x(
+                        -arm - 0.4 * crouch - breath + attack - airborne * 0.4,
+                    ),
+                arm_offset,
+            ),
+            PlayerPart::LegLeft => (
+                Quat::from_rotation_x(-leg - airborne * 0.15),
+                leg_offset,
+            ),
+            PlayerPart::LegRight => (
+                Quat::from_rotation_x(leg + airborne * 0.15),
+                leg_offset,
+            ),
         };
         transform.rotation = rotation;
-        if matches!(
-            kind,
-            PlayerPart::ForearmLeft | PlayerPart::ForearmRight
-        ) {
-            transform.translation = Vec3::new(0.0, -ARM_LENGTH, 0.0);
-        } else if matches!(kind, PlayerPart::ShinLeft | PlayerPart::ShinRight) {
-            transform.translation = Vec3::new(0.0, -6.0, 0.0);
-        } else {
-            transform.translation = pivot.0 + offset;
-        }
+        transform.translation = pivot.0 + offset;
         transform.scale = Vec3::ONE;
 
         if limb.is_some() {
             let slot = part_slot(*kind);
-            let world_part = match kind {
-                PlayerPart::ForearmLeft | PlayerPart::ForearmRight => {
-                    let left = *kind == PlayerPart::ForearmLeft;
-                    let shoulder_pivot =
-                        Vec3::new(if left { -6.0 } else { 6.0 }, 22.0, 0.0) + arm_offset;
-                    let upper = applied_upper[if left { 0 } else { 1 }];
-                    let upper_world = root_tf.mul_transform(Transform {
-                        translation: shoulder_pivot,
-                        rotation: upper,
-                        scale: Vec3::ONE,
-                    });
-                    upper_world.mul_transform(Transform {
-                        translation: Vec3::new(0.0, -ARM_LENGTH, 0.0),
-                        rotation,
-                        scale: Vec3::ONE,
-                    })
-                }
-                PlayerPart::ShinLeft | PlayerPart::ShinRight => {
-                    let left = *kind == PlayerPart::ShinLeft;
-                    let hip_pivot = Vec3::new(if left { -2.0 } else { 2.0 }, 12.0, 0.0)
-                        + leg_offset;
-                    let upper = applied_leg[if left { 0 } else { 1 }];
-                    let upper_world = root_tf.mul_transform(Transform {
-                        translation: hip_pivot,
-                        rotation: upper,
-                        scale: Vec3::ONE,
-                    });
-                    upper_world.mul_transform(Transform {
-                        translation: Vec3::new(0.0, -6.0, 0.0),
-                        rotation,
-                        scale: Vec3::ONE,
-                    })
-                }
-                _ => root_tf.mul_transform(Transform {
-                    translation: pivot.0 + offset,
-                    rotation,
-                    scale: Vec3::ONE,
-                }),
-            };
+            let world_part = root_tf.mul_transform(Transform {
+                translation: pivot.0 + offset,
+                rotation,
+                scale: Vec3::ONE,
+            });
             let (min, max) = part_bounds(*kind);
             let mut bmin = Vec3::splat(f32::MAX);
             let mut bmax = Vec3::splat(f32::MIN);
@@ -1159,19 +811,19 @@ pub fn animate_player_model(
             }
             contacts.boxes[slot] = LimbBox { min: bmin, max: bmax };
             match kind {
-                PlayerPart::ForearmLeft => {
+                PlayerPart::ArmLeft => {
                     contacts.hands[0] =
-                        world_part.transform_point(Vec3::new(0.0, -ARM_LENGTH, 0.0));
+                        world_part.transform_point(Vec3::new(0.0, -10.0, 0.0));
                 }
-                PlayerPart::ForearmRight => {
+                PlayerPart::ArmRight => {
                     contacts.hands[1] =
-                        world_part.transform_point(Vec3::new(0.0, -ARM_LENGTH, 0.0));
+                        world_part.transform_point(Vec3::new(0.0, -10.0, 0.0));
                 }
-                PlayerPart::ShinLeft => {
-                    contacts.feet[0] = world_part.transform_point(Vec3::new(0.0, -6.0, 0.0));
+                PlayerPart::LegLeft => {
+                    contacts.feet[0] = world_part.transform_point(Vec3::new(0.0, -12.0, 0.0));
                 }
-                PlayerPart::ShinRight => {
-                    contacts.feet[1] = world_part.transform_point(Vec3::new(0.0, -6.0, 0.0));
+                PlayerPart::LegRight => {
+                    contacts.feet[1] = world_part.transform_point(Vec3::new(0.0, -12.0, 0.0));
                 }
                 _ => {}
             }
@@ -1217,11 +869,8 @@ fn overlay_texture(part: PlayerPart) -> Option<(Vec2, Vec2)> {
         PlayerPart::Body => Some((Vec2::new(16.0, 32.0), Vec2::new(16.0, 32.0))),
         PlayerPart::ArmRight => Some((Vec2::new(40.0, 32.0), Vec2::new(40.0, 32.0))),
         PlayerPart::ArmLeft => Some((Vec2::new(48.0, 32.0), Vec2::new(48.0, 32.0))),
-        PlayerPart::ForearmRight => Some((Vec2::new(40.0, 38.0), Vec2::new(40.0, 32.0))),
-        PlayerPart::ForearmLeft => Some((Vec2::new(48.0, 38.0), Vec2::new(48.0, 32.0))),
         PlayerPart::LegRight => Some((Vec2::new(0.0, 32.0), Vec2::new(0.0, 32.0))),
         PlayerPart::LegLeft => Some((Vec2::new(16.0, 32.0), Vec2::new(16.0, 32.0))),
-        PlayerPart::ShinLeft | PlayerPart::ShinRight => None,
     }
 }
 
