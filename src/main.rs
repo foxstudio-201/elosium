@@ -6,6 +6,7 @@ mod debug;
 mod debug_boxes;
 mod environment;
 mod frontend;
+mod hud;
 mod interaction;
 mod materials;
 mod mc_worldgen;
@@ -151,6 +152,7 @@ fn main() {
     .add_plugins(menu::MenuPlugin)
     .add_plugins(chat::ChatPlugin)
     .add_plugins(water_fx::WaterFxPlugin)
+    .add_plugins(hud::HudPlugin)
     .add_plugins(frontend::FrontendPlugin)
     .add_plugins(particles::ParticlePlugin)
     .add_systems(Startup, (setup, frontend::spawn_screens).chain())
