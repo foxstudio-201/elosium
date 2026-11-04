@@ -160,6 +160,7 @@ fn chat_input(
     settings: Res<Settings>,
     screen: Res<ScreenState>,
     menu: Res<MenuState>,
+    creative: Res<crate::creative::CreativeState>,
     keys: Res<ButtonInput<KeyCode>>,
     mut keyboard: MessageReader<KeyboardInput>,
     mut cursor: Single<&mut CursorOptions>,
@@ -187,7 +188,10 @@ fn chat_input(
     }
 
     if !state.open {
-        if !menu.open && keys.just_pressed(bound_key(&settings.keys, ACTION_CHAT)) {
+        if !menu.open
+            && !creative.open
+            && keys.just_pressed(bound_key(&settings.keys, ACTION_CHAT))
+        {
             state.open = true;
             cursor.visible = true;
             cursor.grab_mode = CursorGrabMode::None;

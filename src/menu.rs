@@ -980,6 +980,7 @@ fn toggle_menu(
     mut state: ResMut<MenuState>,
     screen: Res<crate::frontend::ScreenState>,
     chat: Res<crate::chat::ChatState>,
+    creative: Res<crate::creative::CreativeState>,
     mut cursor: Single<&mut CursorOptions>,
 ) {
     if std::env::var("ELOSIUM_BAKE_PANORAMA").is_ok()
@@ -987,7 +988,7 @@ fn toggle_menu(
     {
         return;
     }
-    if chat.open || chat.closed_esc {
+    if chat.open || chat.closed_esc || creative.open {
         return;
     }
     if !keys.just_pressed(KeyCode::Escape) {

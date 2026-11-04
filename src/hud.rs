@@ -9,6 +9,7 @@ use bevy::{
 use crate::{
     blocks::Block,
     chat::ChatState,
+    creative::CreativeState,
     debug::HudVisible,
     environment::EnvironmentState,
     frontend::{GameRules, Screen, ScreenState},
@@ -127,7 +128,7 @@ struct AtlasSet {
 }
 
 impl ItemAtlases {
-    fn icon(&self, block: Block) -> (Handle<Image>, Handle<TextureAtlasLayout>, usize) {
+    pub fn icon(&self, block: Block) -> (Handle<Image>, Handle<TextureAtlasLayout>, usize) {
         let (set, rects, face) = if block.is_plant() {
             (&self.flora, FLORA_UV_RECTS.as_slice(), 0)
         } else if block.is_leaves() {
@@ -577,11 +578,12 @@ fn spawn_hud(
 
 fn select_hotbar(
     screen: Res<ScreenState>,
+    creative: Res<CreativeState>,
     keys: Res<ButtonInput<KeyCode>>,
     mut wheel: MessageReader<MouseWheel>,
     mut inventory: ResMut<Inventory>,
 ) {
-    if screen.screen != Screen::Playing {
+    if screen.screen != Screen::Playing || creative.open {
         return;
     }
     const DIGITS: [KeyCode; HOTBAR_SLOTS] = [

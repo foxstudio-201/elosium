@@ -8,6 +8,7 @@ use bevy::{
 };
 
 use crate::{
+    creative::CreativeState,
     debug::HudVisible,
     frontend::GameRules,
     hud::Inventory,
@@ -98,6 +99,7 @@ pub fn follow_camera(
 pub fn break_block(
     time: Res<Time>,
     menu: Res<MenuState>,
+    creative: Res<CreativeState>,
     rules: Res<GameRules>,
     view: Res<ViewMode>,
     mouse: Res<ButtonInput<MouseButton>>,
@@ -111,7 +113,9 @@ pub fn break_block(
     if rules.gamemode >= 2 {
         return;
     }
-    let active = !menu.open && (cursor.grab_mode != CursorGrabMode::None || view.mode == 2);
+    let active = !menu.open
+        && !creative.open
+        && (cursor.grab_mode != CursorGrabMode::None || view.mode == 2);
     if !active || !mouse.pressed(MouseButton::Left) {
         timer.cooldown = 0.0;
         return;
@@ -154,6 +158,7 @@ pub fn break_block(
 
 pub fn place_block(
     menu: Res<MenuState>,
+    creative: Res<CreativeState>,
     rules: Res<GameRules>,
     mut inventory: ResMut<Inventory>,
     mouse: Res<ButtonInput<MouseButton>>,
@@ -166,7 +171,9 @@ pub fn place_block(
     if rules.gamemode >= 2 {
         return;
     }
-    let active = !menu.open && (cursor.grab_mode != CursorGrabMode::None || view.mode == 2);
+    let active = !menu.open
+        && !creative.open
+        && (cursor.grab_mode != CursorGrabMode::None || view.mode == 2);
     if !active || !mouse.just_pressed(MouseButton::Right) {
         return;
     }

@@ -1,6 +1,7 @@
 mod blocks;
 mod chat;
 mod clouds;
+mod creative;
 mod daynight;
 mod debug;
 mod debug_boxes;
@@ -152,6 +153,7 @@ fn main() {
     .add_plugins(chat::ChatPlugin)
     .add_plugins(water_fx::WaterFxPlugin)
     .add_plugins(hud::HudPlugin)
+    .add_plugins(creative::CreativePlugin)
     .add_plugins(frontend::FrontendPlugin)
     .add_plugins(particles::ParticlePlugin)
     .add_systems(Startup, (setup, frontend::spawn_screens).chain())

@@ -6,6 +6,7 @@ use bevy::{
 
 use crate::{
     chat::ChatState,
+    creative::CreativeState,
     hud::Vitals,
     menu::{
         bound_key, MenuState, Settings, ACTION_BACK, ACTION_FORWARD, ACTION_JUMP, ACTION_LEFT,
@@ -349,11 +350,12 @@ pub fn grab_cursor(
     mouse: Res<ButtonInput<MouseButton>>,
     menu: Res<MenuState>,
     chat: Res<ChatState>,
+    creative: Res<CreativeState>,
     view: Res<ViewMode>,
     mut cursor: Single<&mut CursorOptions>,
     mut player: Query<&mut Player, With<Camera3d>>,
 ) {
-    if menu.open || chat.open || view.mode == 2 {
+    if menu.open || chat.open || creative.open || view.mode == 2 {
         return;
     }
     if mouse.just_pressed(MouseButton::Left) {
@@ -370,6 +372,7 @@ pub fn player_controller(
     time: Res<Time>,
     menu: Res<MenuState>,
     chat: Res<ChatState>,
+    creative: Res<CreativeState>,
     settings: Res<Settings>,
     keys: Res<ButtonInput<KeyCode>>,
     mouse_motion: Res<AccumulatedMouseMotion>,
@@ -402,7 +405,11 @@ pub fn player_controller(
         return;
     }
 
-    if cursor.grab_mode != CursorGrabMode::None && !menu.open && !chat.open {
+    if cursor.grab_mode != CursorGrabMode::None
+        && !menu.open
+        && !chat.open
+        && !creative.open
+    {
         let sensitivity = 0.0022;
         player.yaw -= mouse_motion.delta.x * sensitivity;
         player.pitch =
@@ -439,10 +446,11 @@ pub fn player_controller(
     player.sneaking = sneaking;
     let jump = !menu.open
         && !chat.open
+        && !creative.open
         && (keys.pressed(bound_key(&settings.keys, ACTION_JUMP))
             || raw(VK_SPACE)
             || std::env::var("ELOSIUM_JUMP_INPUT").is_ok());
-    if menu.open || chat.open {
+    if menu.open || chat.open || creative.open {
         forward_input = 0.0;
         strafe_input = 0.0;
     }
