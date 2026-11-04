@@ -8,7 +8,6 @@ use bevy::{
 use crate::{
     daynight::SunLight,
     environment::{update_environment_effects, EnvironmentState},
-    menu::Settings,
     player::Player,
 };
 
@@ -24,7 +23,6 @@ pub struct UnderwaterFx {
     pub forward: Vec4,
     pub right: Vec4,
     pub up: Vec4,
-    pub sun_screen: Vec4,
 }
 
 impl FullscreenMaterial for UnderwaterFx {
@@ -48,7 +46,6 @@ impl Plugin for WaterFxPlugin {
 fn sync_underwater_fx(
     mut commands: Commands,
     state: Res<EnvironmentState>,
-    settings: Res<Settings>,
     time: Res<Time>,
     sun: Query<(&GlobalTransform, &DirectionalLight), With<SunLight>>,
     mut cameras: Query<
@@ -88,32 +85,9 @@ fn sync_underwater_fx(
     let right = rotation * Vec3::X;
     let up = rotation * Vec3::Y;
     let underwater = state.underwater;
-    let night = 1.0 - daylight;
-    let threshold = if underwater {
-        0.75 - 0.50 * night
-    } else {
-        0.90 - 0.55 * night
-    };
-    let mut sun_screen = Vec4::ZERO;
-    let facing = to_sun.dot(forward);
-    if settings.godrays && facing > 0.05 {
-        let ndc = Vec2::new(
-            (to_sun.dot(right) / facing) / tan_x,
-            (to_sun.dot(up) / facing) / tan_y,
-        );
-        let screen_uv = ndc * 0.5 + 0.5;
-        if screen_uv.x > -0.25
-            && screen_uv.x < 1.25
-            && screen_uv.y > -0.25
-            && screen_uv.y < 1.25
-        {
-            let strength = settings.godray_intensity * if underwater { 0.9 } else { 0.7 };
-            sun_screen = Vec4::new(screen_uv.x, screen_uv.y, 1.0, strength);
-        }
-    }
     let value = UnderwaterFx {
         params: Vec4::new(time.elapsed_secs(), 0.0008, 0.55, 0.12),
-        sun: Vec4::new(daylight, threshold, 0.0, 0.0),
+        sun: Vec4::new(daylight, 0.0, 0.0, 0.0),
         water: Vec4::new(0.18, 0.48, 0.70, daylight),
         surface: Vec4::new(
             state.water_surface,
@@ -126,7 +100,6 @@ fn sync_underwater_fx(
         forward: Vec4::new(forward.x, forward.y, forward.z, tan_x),
         right: Vec4::new(right.x, right.y, right.z, 0.0),
         up: Vec4::new(up.x, up.y, up.z, 0.0),
-        sun_screen,
     };
     if let Some(mut current) = fx {
         *current = value;

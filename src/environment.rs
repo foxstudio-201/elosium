@@ -99,18 +99,18 @@ pub fn update_environment_effects(
         fog_transform.scale = Vec3::new(220.0, 180.0, 220.0);
         if underwater {
             fog_volume.fog_color = Color::srgb(0.12, 0.40, 0.58);
-            fog_volume.density_factor = 0.008;
-            fog_volume.absorption = 0.02;
-            fog_volume.scattering = (0.75 * godray).min(0.90);
-            fog_volume.scattering_asymmetry = 0.52;
-            fog_volume.light_intensity = (2.0 + 1.0 * moon) * godray;
+            fog_volume.density_factor = 0.009;
+            fog_volume.absorption = 0.01;
+            fog_volume.scattering = 0.80;
+            fog_volume.scattering_asymmetry = 0.42;
+            fog_volume.light_intensity = (0.9 + 0.4 * moon) * godray.powf(0.7);
         } else {
             fog_volume.fog_color = AIR_VOLUME;
-            fog_volume.density_factor = 0.006 * godray;
-            fog_volume.absorption = 0.05;
-            fog_volume.scattering = (0.90 * godray).min(0.90);
-            fog_volume.scattering_asymmetry = 0.52;
-            fog_volume.light_intensity = (2.0 + 1.0 * moon) * godray;
+            fog_volume.density_factor = 0.0045;
+            fog_volume.absorption = 0.02;
+            fog_volume.scattering = 0.70;
+            fog_volume.scattering_asymmetry = 0.40;
+            fog_volume.light_intensity = (1.2 + 0.4 * moon) * godray.powf(0.7);
         }
     }
 
