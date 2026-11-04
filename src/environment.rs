@@ -110,15 +110,16 @@ pub fn update_environment_effects(
         };
     }
     if underwater {
-        for handle in &handles.cloud {
+        for (index, handle) in handles.cloud.iter().enumerate() {
             if let Some(mut cloud) = clouds.get_mut(handle) {
                 let color = cloud.params.color;
                 cloud.params.color = Vec4::new(
-                    color.x * 0.68 + tint.x * 0.32,
-                    color.y * 0.68 + tint.y * 0.32,
-                    color.z * 0.68 + tint.z * 0.32,
-                    color.w,
+                    color.x * 0.55 + tint.x * 0.45,
+                    color.y * 0.55 + tint.y * 0.45,
+                    color.z * 0.55 + tint.z * 0.45,
+                    if index == 0 { color.w.max(0.75) } else { 0.0 },
                 );
+                cloud.params.camera.w = 1.0;
             }
         }
     }
@@ -150,7 +151,9 @@ pub fn update_environment_effects(
     }
     fog.directional_light_exponent = 6.0;
     fog.falloff = FogFalloff::ExponentialSquared {
-        density: FOG_DENSITY / settings.fog_radius.max(0.1),
+        density: FOG_DENSITY
+            * if underwater { 4.0 } else { 1.0 }
+            / settings.fog_radius.max(0.1),
     };
     *clear = ClearColor(if underwater {
         water_fog

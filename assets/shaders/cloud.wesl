@@ -41,7 +41,8 @@ fn vertex(vertex_in: Vertex) -> VertexOutput {
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let normal = normalize(in.world_normal);
     let shade = 0.72 + 0.28 * max(normal.y, 0.0) - 0.12 * max(-normal.y, 0.0);
+    let flat = mix(shade, 1.0, params.camera.w);
     let distance_to_camera = distance(in.world_position.xyz, params.camera.xyz);
     let fade = 1.0 - smoothstep(520.0, 820.0, distance_to_camera);
-    return vec4<f32>(params.color.rgb * shade * in.color.rgb, params.color.a * fade);
+    return vec4<f32>(params.color.rgb * flat * in.color.rgb, params.color.a * fade);
 }
