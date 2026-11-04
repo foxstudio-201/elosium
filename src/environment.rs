@@ -51,24 +51,23 @@ pub fn update_environment_effects(
     settings: Res<Settings>,
     mut clear: ResMut<ClearColor>,
     mut state: ResMut<EnvironmentState>,
+    mut out_of_water: Local<f32>,
 ) {
     let Ok((transform, mut fog, volumetric)) = camera.single_mut() else {
         return;
     };
     let eye = transform.translation;
-    let eye_block = world.get_block(
-        eye.x.floor() as i32,
-        eye.y.floor() as i32,
-        eye.z.floor() as i32,
-    );
-    let underwater = eye_block.is_water() || eye_block.is_water_plant();
-    state.underwater = underwater;
-
-    let depth = if underwater {
-        water_depth(&world, eye)
+    let depth = water_depth(&world, eye);
+    let underwater = if depth > 0.015 {
+        *out_of_water = 0.0;
+        true
+    } else if state.underwater {
+        *out_of_water += time.delta_secs();
+        *out_of_water <= 0.35
     } else {
-        0.0
+        false
     };
+    state.underwater = underwater;
     state.water_surface = if underwater { eye.y + depth } else { 0.0 };
     let underwater_flag = if underwater { 1.0 } else { 0.0 };
     let day = sun_daylight(&sun);
@@ -117,7 +116,7 @@ pub fn update_environment_effects(
                     color.x * 0.55 + tint.x * 0.45,
                     color.y * 0.55 + tint.y * 0.45,
                     color.z * 0.55 + tint.z * 0.45,
-                    if index == 0 { color.w.max(0.75) } else { 0.0 },
+                    if index == 0 { 0.96 } else { 0.0 },
                 );
                 cloud.params.camera.w = 1.0;
             }
