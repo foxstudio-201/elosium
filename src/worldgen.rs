@@ -1,6 +1,7 @@
 use std::sync::atomic::{AtomicU8, Ordering};
 
 use crate::{
+    biome_source,
     blocks::{self, Biome, Region, TreeKind},
     mc_worldgen, terrain,
     world::{fbm, hash2, value_noise, Chunk, ChunkPos, Block, CHUNK, MAX_Y, MIN_Y, SEA_LEVEL},
@@ -74,6 +75,9 @@ fn climate(x: i32, z: i32, seed: u32) -> ([f32; 2], Region, bool) {
 }
 
 pub fn biome_at(x: i32, z: i32, seed: u32) -> Biome {
+    if let Some(sample) = mc_worldgen::climate_sample(x, z, seed, world_type()) {
+        return biome_source::select(sample);
+    }
     let (climate, region, variant) = climate(x, z, seed);
     blocks::select_biome(climate[0], climate[1], region, variant)
 }
@@ -89,19 +93,26 @@ pub fn column(x: i32, z: i32, seed: u32) -> Column {
             stream: 0.0,
         };
     }
-    let (climate, region, variant) = climate(x, z, seed);
-    let neighborhood = [(0, 0), (10, 0), (-10, 0), (0, 10), (0, -10)];
+    let (custom_climate, region, variant) = climate(x, z, seed);
+    let mc_climate = mc_worldgen::climate_sample(x, z, seed, world_type());
+    let center_biome = mc_climate.map_or_else(
+        || blocks::select_biome(custom_climate[0], custom_climate[1], region, variant),
+        biome_source::select,
+    );
+    let climate = mc_climate.map_or(custom_climate, |sample| {
+        [
+            ((sample[0] + 1.0) * 0.5).clamp(0.0, 1.0),
+            ((sample[1] + 1.0) * 0.5).clamp(0.0, 1.0),
+        ]
+    });
+    let neighborhood = [(10, 0), (-10, 0), (0, 10), (0, -10)];
     let mut samples = [(Biome::Ocean, 1.0f32); 5];
-    let mut total = 0.0;
+    samples[0] = (center_biome, 2.0);
+    let mut total = 2.0;
     for (index, (dx, dz)) in neighborhood.iter().enumerate() {
-        let biome = if index == 0 {
-            blocks::select_biome(climate[0], climate[1], region, variant)
-        } else {
-            biome_at(x + dx, z + dz, seed)
-        };
-        let weight = if index == 0 { 2.0 } else { 1.0 };
-        samples[index] = (biome, weight);
-        total += weight;
+        let biome = biome_at(x + dx, z + dz, seed);
+        samples[index + 1] = (biome, 1.0);
+        total += 1.0;
     }
     let mut hilliness = 0.0;
     let mut offset = 0.0;

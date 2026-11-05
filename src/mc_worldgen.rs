@@ -31,6 +31,35 @@ pub fn surface_height(x: i32, z: i32, seed: u32, world_type: u8) -> Option<i32> 
     })
 }
 
+pub fn climate_sample(x: i32, z: i32, seed: u32, world_type: u8) -> Option<[f32; 6]> {
+    if world_type == 1 {
+        return None;
+    }
+    SESSION.with(|cell| {
+        let mut slot = cell.borrow_mut();
+        let recreate = match slot.as_ref() {
+            Some(session) => session.seed != seed || session.kind != world_type,
+            None => true,
+        };
+        if recreate {
+            *slot = Some(Session::new(seed, world_type));
+        }
+        let session = slot.as_mut()?;
+        let names = ["temperature", "vegetation", "continents", "erosion", "ridges_folded"];
+        let mut out = [0.0f32; 6];
+        for (index, name) in names.iter().enumerate() {
+            let full = format!("minecraft:overworld/{name}");
+            let node = session.function(&full)?;
+            let value = session.eval(&node, x as f32, 0.0, z as f32);
+            match *name {
+                "ridges_folded" => out[5] = value,
+                _ => out[index] = value,
+            }
+        }
+        Some(out)
+    })
+}
+
 struct Session {
     seed: u32,
     kind: u8,
@@ -394,6 +423,7 @@ struct NormalNoise {
     first_octave: i32,
     amplitudes: Vec<f32>,
     permutation: [u8; 512],
+    scale: f32,
 }
 
 impl NormalNoise {
@@ -402,6 +432,7 @@ impl NormalNoise {
             first_octave: 0,
             amplitudes: Vec::new(),
             permutation: [0; 512],
+            scale: 1.0,
         }
     }
 
@@ -426,10 +457,16 @@ impl NormalNoise {
             })
             .unwrap_or_default();
         let salt = hash_string(name);
+        let scale = if name.ends_with("temperature") || name.ends_with("vegetation") {
+            1.0
+        } else {
+            3.0
+        };
         Self {
             first_octave,
             amplitudes,
             permutation: permutation(seed as u64 ^ salt),
+            scale,
         }
     }
 
@@ -450,7 +487,7 @@ impl NormalNoise {
             }
             frequency *= 2.0;
         }
-        sum / normalization * 3.0
+        sum / normalization * self.scale
     }
 }
 

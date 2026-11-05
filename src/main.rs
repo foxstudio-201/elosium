@@ -1,3 +1,5 @@
+mod biome_source;
+mod biome_table;
 mod blocks;
 mod chat;
 mod commands;
@@ -300,7 +302,7 @@ fn setup(
             .and_then(|value| value.parse::<u32>().ok())
             .unwrap_or(4_038_368_238);
         let span = 1536;
-        let step = 16;
+        let step = 24;
         let size = (span * 2 / step) as usize;
         let mut pixels = Vec::with_capacity(size * size * 3);
         let mut land = 0usize;
@@ -315,15 +317,28 @@ fn setup(
                 } else {
                     land += 1;
                     let h = column.height;
-                    let color = if column.biome == crate::blocks::Biome::Beach || h <= crate::world::SEA_LEVEL + 2 {
-                        [214, 196, 138]
-                    } else if h > 150 {
-                        [235, 240, 245]
-                    } else if h > 110 {
-                        [120, 118, 112]
-                    } else {
-                        [72, 138, 64]
+                    use crate::blocks::Biome as B;
+                    let base: [u8; 3] = match column.biome {
+                        B::Ocean => [28, 62, 120],
+                        B::Beach => [214, 196, 138],
+                        B::FrozenTundra | B::FrozenPineTaiga | B::ColdBorealTaiga
+                        | B::IcyHeights | B::Spires => [226, 236, 244],
+                        B::DeciduousForest | B::SilverBirchForest | B::TemperateGrove
+                        | B::MapleForest | B::AutumnalMapleForest | B::BlackwoodTaiga
+                        | B::PineTaiga | B::BorealTaiga | B::GoldenBorealTaiga
+                        | B::Redwoods | B::WillowForest | B::Orchard => [48, 112, 52],
+                        B::Grassland | B::CloverPlains | B::BarleyFields | B::PoppyFields
+                        | B::Prairie | B::FlowerFields | B::PumpkinFields | B::RockyMeadow => [104, 160, 64],
+                        B::Rainforest | B::BambooForest | B::EucalyptusForest => [24, 88, 40],
+                        B::BaobabSavanna | B::Outback | B::DryBushland | B::Shrubland => [166, 148, 74],
+                        B::SaguaroDesert | B::JoshuaDesert | B::MauveHills => [206, 172, 104],
                     };
+                    let shade = if h > 150 { 60 } else if h > 105 { 25 } else { 0 };
+                    let color = [
+                        base[0].saturating_add(shade).min(255),
+                        base[1].saturating_add(shade).min(255),
+                        base[2].saturating_add(shade).min(255),
+                    ];
                     pixels.extend_from_slice(&color);
                 }
             }
