@@ -4,9 +4,9 @@ use bevy::{
         mouse::{MouseScrollUnit, MouseWheel},
     },
     prelude::*,
-    ui::Pressed,
+    ui::{Pressed, UiGlobalTransform},
     ui_widgets::Button,
-    window::{CursorGrabMode, CursorOptions},
+    window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 
 use crate::{
@@ -472,39 +472,58 @@ fn refresh_creative(
 fn click_creative(
     mut state: ResMut<CreativeState>,
     mut inventory: ResMut<Inventory>,
-    buttons: Query<(Entity, &CreativeTabButton, Has<Pressed>), With<Button>>,
-    slots: Query<(Entity, &CreativeSlot, Has<Pressed>), With<Button>>,
+    window: Query<&Window, With<PrimaryWindow>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    buttons: Query<
+        (Entity, &CreativeTabButton, Has<Pressed>, &ComputedNode, &UiGlobalTransform),
+        With<Button>,
+    >,
+    slots: Query<
+        (Entity, &CreativeSlot, Has<Pressed>, &ComputedNode, &UiGlobalTransform),
+        With<Button>,
+    >,
     mut held: Local<std::collections::HashSet<Entity>>,
 ) {
     if !state.open {
         held.clear();
         return;
     }
-    for (entity, tab, pressed) in &buttons {
-        if pressed {
-            if held.insert(entity) {
-                state.tab = tab.0;
-                state.page = 0;
-            }
-        } else {
+    let Ok(window) = window.single() else {
+        return;
+    };
+    let cursor = window
+        .cursor_position()
+        .map(|point| point * window.scale_factor());
+    let clicked = mouse.just_pressed(MouseButton::Left);
+    for (entity, tab, pressed, node, transform) in &buttons {
+        let edge = pressed && held.insert(entity);
+        if !pressed {
             held.remove(&entity);
+        }
+        let hover_click = clicked
+            && cursor.is_some_and(|point| node.contains_point(*transform, point));
+        if edge || hover_click {
+            state.tab = tab.0;
+            state.page = 0;
         }
     }
     let blocks = filtered_blocks(&state);
     let page = state
         .page
         .min(blocks.chunks(PAGE_SIZE).count().max(1) - 1);
-    for (entity, slot, pressed) in &slots {
-        if pressed {
-            if held.insert(entity) {
-                let index = page * PAGE_SIZE + slot.0;
-                if let Some(block) = blocks.get(index).copied() {
-                    let selected = inventory.selected;
-                    inventory.slots[selected] = Some(ItemStack { block, count: 64 });
-                }
-            }
-        } else {
+    for (entity, slot, pressed, node, transform) in &slots {
+        let edge = pressed && held.insert(entity);
+        if !pressed {
             held.remove(&entity);
+        }
+        let hover_click = clicked
+            && cursor.is_some_and(|point| node.contains_point(*transform, point));
+        if edge || hover_click {
+            let index = page * PAGE_SIZE + slot.0;
+            if let Some(block) = blocks.get(index).copied() {
+                let selected = inventory.selected;
+                inventory.slots[selected] = Some(ItemStack { block, count: 64 });
+            }
         }
     }
 }
